@@ -141,3 +141,20 @@ app.post('/merge', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// VoiceRSS TTS endpoint
+app.post('/tts-voicerss', async (req, res) => {
+  const { text, voice } = req.body;
+  const key = process.env.VOICERSS_KEY;
+  try {
+    const response = await fetch(
+      `https://api.voicerss.org/?key=${key}&hl=${voice||'en-us'}&src=${encodeURIComponent(text)}&c=MP3&f=44khz_16bit_stereo`
+    );
+    const buffer = await response.arrayBuffer();
+    res.set('Content-Type', 'audio/mpeg');
+    res.set('Content-Disposition', 'attachment; filename="voice.mp3"');
+    res.send(Buffer.from(buffer));
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
