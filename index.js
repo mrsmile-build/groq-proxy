@@ -84,3 +84,62 @@ app.get('/videos', async (req, res) => {
 app.get('/', (req, res) => res.send('VideoKit API Running'));
 
 app.listen(process.env.PORT || 3000);
+
+// Browser TTS fallback endpoint
+app.post('/tts-script', async (req, res) => {
+  res.json({ text: req.body.text, use_browser_tts: true });
+});
+
+// Video merge endpoint
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+const tmp = require('tmp');
+const https = require('https');
+const fs = require('fs');
+
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, res => {
+      res.pipe(file);
+      file.on('finish', () => file.close(resolve));
+    }).on('error', reject);
+  });
+}
+
+app.post('/merge', async (req, res) => {
+  const { videos, audio_text } = req.body;
+  if (!videos || videos.length === 0) {
+    return res.status(400).json({ error: 'No videos provided' });
+  }
+  try {
+    const tmpDir = tmp.dirSync({ unsafeCleanup: true });
+    const videoFiles = [];
+    for (let i = 0; i < videos.length; i++) {
+      const dest = `${tmpDir.name}/video${i}.mp4`;
+      await downloadFile(videos[i], dest);
+      videoFiles.push(dest);
+    }
+    const outputFile = `${tmpDir.name}/output.mp4`;
+    const listFile = `${tmpDir.name}/list.txt`;
+    const listContent = videoFiles.map(f => `file '${f}'`).join('\n');
+    fs.writeFileSync(listFile, listContent);
+    await new Promise((resolve, reject) => {
+      ffmpeg()
+        .input(listFile)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .outputOptions(['-c', 'copy'])
+        .output(outputFile)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
+    });
+    res.set('Content-Type', 'video/mp4');
+    res.set('Content-Disposition', 'attachment; filename="videokit.mp4"');
+    fs.createReadStream(outputFile).pipe(res);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});

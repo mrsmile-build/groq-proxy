@@ -5,6 +5,10 @@
   "scripts": { "start": "node index.js" },
   "dependencies": {
     "express": "*",
-    "cors": "*"
+    "cors": "*",
+    "fluent-ffmpeg": "*",
+    "@ffmpeg-installer/ffmpeg": "*",
+    "node-fetch": "*",
+    "tmp": "*"
   }
 }
