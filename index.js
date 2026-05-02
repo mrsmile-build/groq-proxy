@@ -142,18 +142,35 @@ app.post('/merge', async (req, res) => {
   }
 });
 
-// VoiceRSS TTS endpoint
+// Edge TTS endpoint - free Microsoft neural voices
+const { exec } = require('child_process');
+const fs = require('fs');
+
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
-  const key = process.env.VOICERSS_KEY;
+  const voiceMap = {
+    'en-us': 'en-US-GuyNeural',
+    'en-gb': 'en-GB-RyanNeural',
+    'en-au': 'en-AU-WilliamNeural',
+    'en-ca': 'en-CA-LiamNeural',
+    'en-in': 'en-IN-PrabhatNeural',
+    'fr-fr': 'fr-FR-HenriNeural',
+    'de-de': 'de-DE-ConradNeural',
+    'es-es': 'es-ES-AlvaroNeural'
+  };
+  const edgeVoice = voiceMap[voice] || 'en-US-GuyNeural';
+  const outFile = '/tmp/tts_' + Date.now() + '.mp3';
   try {
-    const response = await fetch(
-      `https://api.voicerss.org/?key=${key}&hl=${voice||'en-us'}&src=${encodeURIComponent(text)}&c=MP3&f=44khz_16bit_stereo`
-    );
-    const buffer = await response.arrayBuffer();
+    await new Promise((resolve, reject) => {
+      exec(`edge-tts --voice "${edgeVoice}" --text "${text.replace(/"/g, "'")}" --write-media ${outFile}`,
+        (error) => error ? reject(error) : resolve()
+      );
+    });
     res.set('Content-Type', 'audio/mpeg');
-    res.set('Content-Disposition', 'attachment; filename="voice.mp3"');
-    res.send(Buffer.from(buffer));
+    res.set('Content-Disposition', 'attachment; filename="narration.mp3"');
+    const stream = fs.createReadStream(outFile);
+    stream.pipe(res);
+    stream.on('end', () => fs.unlinkSync(outFile));
   } catch(err) {
     res.status(500).json({ error: err.message });
   }

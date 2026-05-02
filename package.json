@@ -2,7 +2,10 @@
   "name": "groq-proxy",
   "version": "2.0.0",
   "main": "index.js",
-  "scripts": { "start": "node index.js" },
+  "scripts": {
+    "start": "node index.js",
+    "build": "npm install && pip install edge-tts --break-system-packages || true"
+  },
   "dependencies": {
     "express": "*",
     "cors": "*",
