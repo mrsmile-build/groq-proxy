@@ -145,7 +145,7 @@ app.post('/merge', async (req, res) => {
 // VoiceRSS TTS endpoint
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
-  const key = process.env.voicerss_key;
+  const key = process.env.VOICERSS_KEY;
   try {
     const response = await fetch(
       `https://api.voicerss.org/?key=${key}&hl=${voice||'en-us'}&src=${encodeURIComponent(text)}&c=MP3&f=44khz_16bit_stereo`
