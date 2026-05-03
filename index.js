@@ -95,10 +95,10 @@ app.post('/tts-voicerss', async (req, res) => {
   const encoded  = encodeURIComponent(safeText);
 
   const seVoiceMap = {
-    'en-us':'Matthew', 'en-us-f':'Joanna',
+    'en-us':'Brian', 'en-us-f':'Joanna',
     'en-gb':'Brian',   'en-gb-f':'Amy',
     'en-au':'Russell', 'en-au-f':'Nicole',
-    'en-ca':'Matthew', 'en-in':'Aditi',
+    'en-ca':'Brian', 'en-in':'Aditi',
     'fr-fr':'Mathieu', 'fr-fr-f':'Celine',
     'de-de':'Hans',    'de-de-f':'Marlene',
     'es-es':'Enrique', 'es-es-f':'Conchita'
