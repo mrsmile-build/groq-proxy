@@ -197,6 +197,121 @@ app.post('/merge', async (req, res) => {
   }
 });
 
+
+// ── Burn text overlay onto video ─────────────────────────────
+// Downloads video, burns subtitle text, returns new MP4
+app.post('/overlay', async (req, res) => {
+  const { videoUrl, text, position } = req.body;
+  if (!videoUrl || !text) return res.status(400).json({ error: 'Missing videoUrl or text' });
+
+  try {
+    const tmpDir   = tmp.dirSync({ unsafeCleanup: true });
+    const inFile   = `${tmpDir.name}/input.mp4`;
+    const outFile  = `${tmpDir.name}/output.mp4`;
+
+    await downloadFile(videoUrl, inFile);
+
+    // Clean text for ffmpeg - remove special chars
+    const safeText = text.replace(/[':]/g, ' ').slice(0, 120);
+
+    // Position: bottom (default), center, top
+    const yPos = position === 'top' ? '50' : position === 'center' ? '(h-text_h)/2' : '(h-text_h-40)';
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(inFile)
+        .videoFilters([{
+          filter: 'drawtext',
+          options: {
+            text:        safeText,
+            fontsize:    '28',
+            fontcolor:   'white',
+            x:           '(w-text_w)/2',
+            y:           yPos,
+            shadowcolor: 'black',
+            shadowx:     '2',
+            shadowy:     '2',
+            box:         '1',
+            boxcolor:    'black@0.4',
+            boxborderw:  '8',
+            line_spacing: '8'
+          }
+        }])
+        .outputOptions(['-c:a', 'copy'])
+        .output(outFile)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
+    });
+
+    res.set('Content-Type', 'video/mp4');
+    res.set('Content-Disposition', 'attachment; filename="scene-overlay.mp4"');
+    fs.createReadStream(outFile).pipe(res);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Merge videos with text overlays ──────────────────────────
+app.post('/merge-overlay', async (req, res) => {
+  const { scenes } = req.body;
+  // scenes = [{videoUrl, text}, ...]
+  if (!scenes || !scenes.length) return res.status(400).json({ error: 'No scenes' });
+
+  try {
+    const tmpDir = tmp.dirSync({ unsafeCleanup: true });
+    const processedFiles = [];
+
+    for (let i = 0; i < scenes.length; i++) {
+      const { videoUrl, text } = scenes[i];
+      const inFile  = `${tmpDir.name}/in${i}.mp4`;
+      const outFile = `${tmpDir.name}/out${i}.mp4`;
+
+      await downloadFile(videoUrl, inFile);
+
+      if (text && text.trim()) {
+        const safeText = text.replace(/[':]/g, ' ').slice(0, 120);
+        await new Promise((resolve, reject) => {
+          ffmpeg(inFile)
+            .videoFilters([{
+              filter: 'drawtext',
+              options: {
+                text: safeText, fontsize: '28', fontcolor: 'white',
+                x: '(w-text_w)/2', y: '(h-text_h-40)',
+                shadowcolor: 'black', shadowx: '2', shadowy: '2',
+                box: '1', boxcolor: 'black@0.4', boxborderw: '8'
+              }
+            }])
+            .outputOptions(['-c:a', 'copy'])
+            .output(outFile)
+            .on('end', resolve).on('error', reject).run();
+        });
+        processedFiles.push(outFile);
+      } else {
+        processedFiles.push(inFile);
+      }
+    }
+
+    // Now merge all processed files
+    const listFile   = `${tmpDir.name}/list.txt`;
+    const finalFile  = `${tmpDir.name}/final.mp4`;
+    fs.writeFileSync(listFile, processedFiles.map(f => `file '${f}'`).join('\n'));
+
+    await new Promise((resolve, reject) => {
+      ffmpeg().input(listFile)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .outputOptions(['-c', 'copy'])
+        .output(finalFile)
+        .on('end', resolve).on('error', reject).run();
+    });
+
+    res.set('Content-Type', 'video/mp4');
+    res.set('Content-Disposition', 'attachment; filename="videokit-final.mp4"');
+    fs.createReadStream(finalFile).pipe(res);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(process.env.PORT || 3000, () => {
   console.log('VideoKit API running on port', process.env.PORT || 3000);
 });
@@ -210,9 +325,3 @@ if (SELF_URL) {
   }, 10 * 60 * 1000);
 }
 
-app.get('/ffmpeg-check', async (req, res) => {
-  const { exec } = require('child_process');
-  exec('ffmpeg -filters 2>&1 | grep drawtext', (err, stdout) => {
-    res.json({ drawtext: stdout.includes('drawtext'), raw: stdout.slice(0,500) });
-  });
-});
