@@ -90,6 +90,20 @@ app.get('/videos', async (req, res) => {
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'No text provided' });
+  // Use Web Speech API on frontend — more reliable than server TTS
+  const langMap = {
+    'en-us':'en-US','en-us-f':'en-US','en-gb':'en-GB','en-gb-f':'en-GB',
+    'en-au':'en-AU','en-au-f':'en-AU','en-ca':'en-CA','en-in':'en-IN',
+    'fr-fr':'fr-FR','fr-fr-f':'fr-FR','de-de':'de-DE','de-de-f':'de-DE',
+    'es-es':'es-ES','es-es-f':'es-ES'
+  };
+  return res.status(503).json({
+    error:'server_tts_unavailable', fallback:'webspeech',
+    text: text.slice(0,1000),
+    lang: langMap[voice]||'en-US',
+    male: !voice.endsWith('-f')
+  });
+  if (false) {
 
   const safeText = text.slice(0, 300).replace(/"/g, "'");
   const encoded  = encodeURIComponent(safeText);
