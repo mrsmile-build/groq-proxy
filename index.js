@@ -209,3 +209,10 @@ if (SELF_URL) {
     console.log('[Keep-alive] pinged', new Date().toISOString());
   }, 10 * 60 * 1000);
 }
+
+app.get('/ffmpeg-check', async (req, res) => {
+  const { exec } = require('child_process');
+  exec('ffmpeg -filters 2>&1 | grep drawtext', (err, stdout) => {
+    res.json({ drawtext: stdout.includes('drawtext'), raw: stdout.slice(0,500) });
+  });
+});
