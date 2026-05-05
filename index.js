@@ -325,3 +325,22 @@ if (SELF_URL) {
   }, 10 * 60 * 1000);
 }
 
+
+app.get('/eleven-test', async (req, res) => {
+  const key = process.env.ELEVENLABS_KEY;
+  if (!key) return res.json({ error: 'No key found' });
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/user', {
+      headers: { 'xi-api-key': key }
+    });
+    const data = await r.json();
+    res.json({
+      status: r.status,
+      chars_used: data.subscription?.character_count,
+      chars_limit: data.subscription?.character_limit,
+      tier: data.subscription?.tier
+    });
+  } catch(e) {
+    res.json({ error: e.message });
+  }
+});
