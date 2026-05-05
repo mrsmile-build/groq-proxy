@@ -311,6 +311,24 @@ app.post('/merge-overlay', async (req, res) => {
   }
 });
 
+
+// HasData trending topics endpoint
+app.get('/trending', async (req, res) => {
+  const { q } = req.query;
+  const key = process.env.HASDATA_KEY;
+  try {
+    const response = await fetch(
+      `https://api.hasdata.com/scrape/google/serp?q=${encodeURIComponent(q)}&gl=us&hl=en`,
+      { headers: { 'x-api-key': key } }
+    );
+    const data = await response.json();
+    const results = (data.organicResults || []).slice(0,5).map(r => r.title);
+    res.json({ trending: results, query: q });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(process.env.PORT || 3000, () => {
   console.log('VideoKit API running on port', process.env.PORT || 3000);
 });
