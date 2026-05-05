@@ -83,78 +83,77 @@ app.get('/videos', async (req, res) => {
   }
 });
 
-// ── Multi-Layer TTS ───────────────────────────────────────────
-// Layer 1: StreamElements (Amazon Polly — free, no key)
-// Layer 2: Google Translate TTS
-// Layer 3: JSON signal -> frontend uses Web Speech API
+// ── ElevenLabs TTS ───────────────────────────────────────────
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'No text provided' });
-  // Use Web Speech API on frontend — more reliable than server TTS
 
+  const key = process.env.ELEVENLABS_KEY;
+  const safeText = text.slice(0, 500);
 
-
-  const safeText = text.slice(0, 300).replace(/"/g, "'");
-  const encoded  = encodeURIComponent(safeText);
-
-  const seVoiceMap = {
-    'en-us':'Brian', 'en-us-f':'Joanna',
-    'en-gb':'Brian',   'en-gb-f':'Amy',
-    'en-au':'Russell', 'en-au-f':'Nicole',
-    'en-ca':'Brian', 'en-in':'Aditi',
-    'fr-fr':'Mathieu', 'fr-fr-f':'Celine',
-    'de-de':'Hans',    'de-de-f':'Marlene',
-    'es-es':'Enrique', 'es-es-f':'Conchita'
+  const voiceIds = {
+    'en-us-matthew': 'pNInz6obpgDQGcFmaJgB',
+    'en-us-joey':    'TxGEqnHWrfWFTfGW9XjX',
+    'en-us-joanna':  '21m00Tcm4TlvDq8ikWAM',
+    'en-us-kendra':  'AZnzlk1XvdvUeBnXmlld',
+    'en-us-salli':   'EXAVITQu4vr4xnSDxMaL',
+    'en-gb-brian':   'IKne3meq5aSn9XLyUdCD',
+    'en-gb-amy':     'XrExE9yKIg1WjnnlVkGX',
+    'en-gb-emma':    'ThT5KcBeYPX3keUQqHPh',
+    'en-au-russell': 'IKne3meq5aSn9XLyUdCD',
+    'en-au-olivia':  'XrExE9yKIg1WjnnlVkGX',
+    'en-in-kajal':   '21m00Tcm4TlvDq8ikWAM',
+    'fr-remi':       'pNInz6obpgDQGcFmaJgB',
+    'fr-lea':        'EXAVITQu4vr4xnSDxMaL',
+    'de-daniel':     'TxGEqnHWrfWFTfGW9XjX',
+    'de-vicki':      '21m00Tcm4TlvDq8ikWAM',
+    'es-sergio':     'VR6AewLTigWG4xSOukaG',
+    'es-lucia':      'AZnzlk1XvdvUeBnXmlld',
+    'pt-thiago':     'VR6AewLTigWG4xSOukaG',
+    'pt-camila':     'EXAVITQu4vr4xnSDxMaL',
+    'ar-zayd':       'pNInz6obpgDQGcFmaJgB',
+    'ar-hala':       '21m00Tcm4TlvDq8ikWAM'
   };
-  const langMap = {
-    'en-us':'en','en-us-f':'en','en-gb':'en','en-gb-f':'en',
-    'en-au':'en','en-au-f':'en','en-ca':'en','en-in':'en',
-    'fr-fr':'fr','fr-fr-f':'fr','de-de':'de','de-de-f':'de',
-    'es-es':'es','es-es-f':'es'
-  };
 
-  const seVoice = seVoiceMap[voice] || 'Matthew';
-  const lang    = langMap[voice]    || 'en';
+  const voiceId = voiceIds[voice] || 'pNInz6obpgDQGcFmaJgB';
+  const femaleVoices = ['en-us-joanna','en-us-kendra','en-us-salli','en-gb-amy','en-gb-emma','en-au-olivia','en-in-kajal','fr-lea','de-vicki','es-lucia','pt-camila','ar-hala'];
 
-  // Layer 1: StreamElements
-  try {
-    const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 8000);
-    const r    = await fetch(`https://api.streamelements.com/kv3/voice/${seVoice}/say/${encoded}`, { signal: ctrl.signal });
-    clearTimeout(t);
-    if (r.ok) {
-      const buf = await r.arrayBuffer();
-      if (buf.byteLength > 1000) {
-        res.set('Content-Type', 'audio/mpeg');
-        res.set('X-TTS-Source', 'streamelements');
-        return res.send(Buffer.from(buf));
+  if (key) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000);
+      const r = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        {
+          method: 'POST', signal: ctrl.signal,
+          headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: safeText,
+            model_id: 'eleven_turbo_v2_5',
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+          })
+        }
+      );
+      clearTimeout(t);
+      if (r.ok) {
+        const buf = await r.arrayBuffer();
+        if (buf.byteLength > 1000) {
+          res.set('Content-Type', 'audio/mpeg');
+          res.set('Content-Disposition', 'attachment; filename="narration.mp3"');
+          res.set('X-TTS-Source', 'elevenlabs');
+          return res.send(Buffer.from(buf));
+        }
+      } else {
+        const err = await r.json().catch(() => ({}));
+        console.warn('[TTS] ElevenLabs error:', r.status, JSON.stringify(err));
       }
-    }
-  } catch(e) { console.warn('[TTS] StreamElements failed:', e.message); }
+    } catch(e) { console.warn('[TTS] ElevenLabs failed:', e.message); }
+  }
 
-  // Layer 2: Google Translate TTS
-  try {
-    const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 8000);
-    const r    = await fetch(
-      `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${lang}&client=tw-ob`,
-      { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://translate.google.com/' } }
-    );
-    clearTimeout(t);
-    if (r.ok) {
-      const buf = await r.arrayBuffer();
-      if (buf.byteLength > 500) {
-        res.set('Content-Type', 'audio/mpeg');
-        res.set('X-TTS-Source', 'google');
-        return res.send(Buffer.from(buf));
-      }
-    }
-  } catch(e) { console.warn('[TTS] Google TTS failed:', e.message); }
-
-  // Layer 3: Signal frontend -> Web Speech API
   res.status(503).json({
-    error: 'server_tts_unavailable', fallback: 'webspeech', text: safeText,
-    lang: lang === 'fr' ? 'fr-FR' : lang === 'de' ? 'de-DE' : lang === 'es' ? 'es-ES' : 'en-US'
+    error: 'server_tts_unavailable', fallback: 'webspeech',
+    text: safeText.slice(0, 1000), lang: 'en-US',
+    male: !femaleVoices.includes(voice)
   });
 });
 
