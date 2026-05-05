@@ -298,7 +298,7 @@ app.post('/merge-overlay', async (req, res) => {
     await new Promise((resolve, reject) => {
       ffmpeg().input(listFile)
         .inputOptions(['-f', 'concat', '-safe', '0'])
-        .outputOptions(['-c', 'copy'])
+        .outputOptions(['-c:v','libx264','-crf','28','-preset','fast','-c:a','aac','-b:a','96k'])
         .output(finalFile)
         .on('end', resolve).on('error', reject).run();
     });
