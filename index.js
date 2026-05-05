@@ -329,16 +329,17 @@ app.get('/eleven-test', async (req, res) => {
   const key = process.env.ELEVENLABS_KEY;
   if (!key) return res.json({ error: 'No key found' });
   try {
-    const r = await fetch('https://api.elevenlabs.io/v1/user', {
-      headers: { 'xi-api-key': key }
+    const r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB', {
+      method: 'POST',
+      headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Hello, VideoKit is working!', model_id: 'eleven_turbo_v2_5' })
     });
-    const data = await r.json();
-    res.json({
-      status: r.status,
-      chars_used: data.subscription?.character_count,
-      chars_limit: data.subscription?.character_limit,
-      tier: data.subscription?.tier
-    });
+    if (r.ok) {
+      res.json({ status: 'OK', working: true, bytes: parseInt(r.headers.get('content-length')||'0') });
+    } else {
+      const err = await r.json().catch(()=>({}));
+      res.json({ status: r.status, working: false, error: err });
+    }
   } catch(e) {
     res.json({ error: e.message });
   }
