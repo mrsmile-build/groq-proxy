@@ -335,3 +335,88 @@ app.get('/eleven-test', async (req, res) => {
     res.json({ error: e.message });
   }
 });
+
+// ── Video URL Analyzer ────────────────────────────────────────
+app.post('/analyze-url', async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: 'No URL provided' });
+
+  let platform = 'unknown', title = '', description = '', transcript = '';
+
+  // Detect platform
+  if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    platform = 'youtube';
+    try {
+      // Get basic info via oEmbed
+      const videoId = url.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1];
+      if (videoId) {
+        const oEmbed = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+        const data   = await oEmbed.json();
+        title       = data.title || '';
+
+        // Try to get transcript via free API
+        try {
+          const txRes  = await fetch(`https://yt-transcript-api.vercel.app/transcript?video_id=${videoId}`);
+          const txData = await txRes.json();
+          if (txData && Array.isArray(txData)) {
+            transcript = txData.map(t => t.text).join(' ').slice(0, 2000);
+          }
+        } catch(e) { console.log('[Transcript] failed:', e.message); }
+      }
+    } catch(e) { console.log('[YouTube oEmbed] failed:', e.message); }
+
+  } else if (url.includes('instagram.com')) {
+    platform = 'instagram';
+    // Instagram blocks all external fetching - return platform info only
+  } else if (url.includes('tiktok.com')) {
+    platform = 'tiktok';
+  } else if (url.includes('facebook.com') || url.includes('fb.watch')) {
+    platform = 'facebook';
+  }
+
+  // Use Groq to analyze what we have and generate similar script blueprint
+  const keys = [process.env.GROQ_KEY, process.env.GROQ_KEY2].filter(Boolean);
+  const key  = keys[0];
+
+  if (title || transcript) {
+    try {
+      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          max_tokens: 500,
+          messages: [{
+            role: 'user',
+            content: `Analyze this video and extract key information to help create similar content.
+Title: ${title}
+Transcript excerpt: ${transcript.slice(0, 1000)}
+
+Return a JSON object with:
+- topic (main topic in 1 sentence)
+- style (educational/motivational/storytelling/listicle/news/documentary)
+- tone (professional/casual/energetic/calm)
+- hook_style (how the video starts - question/statement/shocking fact/story)
+- key_points (array of 3-5 main points covered)
+- suggested_idea (a fresh idea for a similar video, reworded to be original)
+
+No markdown. Just JSON.`
+          }]
+        })
+      });
+      const groqData = await groqRes.json();
+      const raw      = groqData.choices[0].message.content.trim().replace(/```json|```/g,'').trim();
+      const analysis = JSON.parse(raw);
+
+      return res.json({ platform, title, transcript: transcript.slice(0,500), analysis, success: true });
+    } catch(e) {
+      console.log('[Groq analysis] failed:', e.message);
+    }
+  }
+
+  // Return what we have even without full analysis
+  res.json({ platform, title, transcript: '', analysis: null, success: false,
+    message: platform === 'youtube' ? 'Could not fetch video details' :
+             `${platform} links cannot be fetched automatically. Please paste the video caption or description below.`
+  });
+});
