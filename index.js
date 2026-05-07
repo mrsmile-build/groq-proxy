@@ -95,14 +95,14 @@ app.post('/tts-voicerss', async (req, res) => {
     'en-us-f':    'en_us_001',
     'en-gb-m':    'en_uk_001',
     'en-gb-f':    'en_uk_003',
-    'en-au-m':    'en_au_001',
+    'en-au-m':    'en_au_002',
     'en-au-f':    'en_au_002',
     'en-news-m':  'en_us_007',
     'en-story-f': 'en_us_002',
-    'fr-m':       'fr_001',
-    'de-m':       'de_001',
+    'fr-m':       'fr_003',
+    'de-m':       'de_002',
     'es-m':       'es_002',
-    'pt-m':       'pt_001'
+    'pt-m':       'pt_002'
   };
 
   const tikVoice = voiceMap[voice] || 'en_us_006';
