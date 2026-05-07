@@ -83,77 +83,50 @@ app.get('/videos', async (req, res) => {
   }
 });
 
-// ── ElevenLabs TTS ───────────────────────────────────────────
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
-  if (!text || !text.trim()) return res.status(400).json({ error: 'No text provided' });
+  if (!text || !text.trim()) return res.status(400).json({ error: 'No text' });
 
-  const key = process.env.ELEVENLABS_KEY;
-  const safeText = text.slice(0, 500);
+  const safeText = text.slice(0, 300);
 
-  const voiceIds = {
-    'en-us-matthew': 'pNInz6obpgDQGcFmaJgB',
-    'en-us-joey':    'TxGEqnHWrfWFTfGW9XjX',
-    'en-us-joanna':  '21m00Tcm4TlvDq8ikWAM',
-    'en-us-kendra':  'AZnzlk1XvdvUeBnXmlld',
-    'en-us-salli':   'EXAVITQu4vr4xnSDxMaL',
-    'en-gb-brian':   'IKne3meq5aSn9XLyUdCD',
-    'en-gb-amy':     'XrExE9yKIg1WjnnlVkGX',
-    'en-gb-emma':    'ThT5KcBeYPX3keUQqHPh',
-    'en-au-russell': 'IKne3meq5aSn9XLyUdCD',
-    'en-au-olivia':  'XrExE9yKIg1WjnnlVkGX',
-    'en-in-kajal':   '21m00Tcm4TlvDq8ikWAM',
-    'fr-remi':       'pNInz6obpgDQGcFmaJgB',
-    'fr-lea':        'EXAVITQu4vr4xnSDxMaL',
-    'de-daniel':     'TxGEqnHWrfWFTfGW9XjX',
-    'de-vicki':      '21m00Tcm4TlvDq8ikWAM',
-    'es-sergio':     'VR6AewLTigWG4xSOukaG',
-    'es-lucia':      'AZnzlk1XvdvUeBnXmlld',
-    'pt-thiago':     'VR6AewLTigWG4xSOukaG',
-    'pt-camila':     'EXAVITQu4vr4xnSDxMaL',
-    'ar-zayd':       'pNInz6obpgDQGcFmaJgB',
-    'ar-hala':       '21m00Tcm4TlvDq8ikWAM'
+  // TikTok TTS - free, no key, real male/female voices
+  const voiceMap = {
+    'en-us-m':    'en_us_006',
+    'en-us-f':    'en_us_001',
+    'en-gb-m':    'en_uk_001',
+    'en-gb-f':    'en_uk_003',
+    'en-au-m':    'en_au_001',
+    'en-au-f':    'en_au_002',
+    'en-news-m':  'en_us_007',
+    'en-story-f': 'en_us_002',
+    'fr-m':       'fr_001',
+    'de-m':       'de_001',
+    'es-m':       'es_002',
+    'pt-m':       'pt_001'
   };
 
-  const voiceId = voiceIds[voice] || 'pNInz6obpgDQGcFmaJgB';
-  const femaleVoices = ['en-us-joanna','en-us-kendra','en-us-salli','en-gb-amy','en-gb-emma','en-au-olivia','en-in-kajal','fr-lea','de-vicki','es-lucia','pt-camila','ar-hala'];
+  const tikVoice = voiceMap[voice] || 'en_us_006';
 
-  if (key) {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 15000);
-      const r = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-        {
-          method: 'POST', signal: ctrl.signal,
-          headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: safeText,
-            model_id: 'eleven_turbo_v2_5',
-            voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-          })
-        }
-      );
-      clearTimeout(t);
-      if (r.ok) {
-        const buf = await r.arrayBuffer();
-        if (buf.byteLength > 1000) {
-          res.set('Content-Type', 'audio/mpeg');
-          res.set('Content-Disposition', 'attachment; filename="narration.mp3"');
-          res.set('X-TTS-Source', 'elevenlabs');
-          return res.send(Buffer.from(buf));
-        }
-      } else {
-        const err = await r.json().catch(() => ({}));
-        console.warn('[TTS] ElevenLabs error:', r.status, JSON.stringify(err));
-      }
-    } catch(e) { console.warn('[TTS] ElevenLabs failed:', e.message); }
-  }
+  try {
+    const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: safeText, voice: tikVoice })
+    });
+    const data = await r.json();
+    if (data.success && data.data) {
+      const buf = Buffer.from(data.data, 'base64');
+      res.set('Content-Type', 'audio/mpeg');
+      res.set('X-TTS-Source', 'tiktok');
+      return res.send(buf);
+    }
+  } catch(e) { console.warn('[TTS] TikTok failed:', e.message); }
 
+  // Fallback: Web Speech signal
   res.status(503).json({
     error: 'server_tts_unavailable', fallback: 'webspeech',
-    text: safeText.slice(0, 1000), lang: 'en-US',
-    male: !femaleVoices.includes(voice)
+    text: safeText, lang: 'en-US',
+    male: !['en-us-f','en-gb-f','en-au-f','en-story-f'].includes(voice)
   });
 });
 
