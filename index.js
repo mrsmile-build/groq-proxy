@@ -186,8 +186,11 @@ app.post('/overlay', async (req, res) => {
     // Clean text for ffmpeg - remove special chars
     const safeText = text.replace(/[':]/g, ' ').slice(0, 120);
 
-    // Position: bottom (default), center, top
-    const yPos = position === 'top' ? '50' : position === 'center' ? '(h-text_h)/2' : '(h-text_h-40)';
+    const isTitle = position === 'title';
+    const yPos = isTitle ? '(h-text_h)/2' : position === 'top' ? '50' : position === 'center' ? '(h-text_h)/2' : '(h-text_h-40)';
+    const fontSize = isTitle ? '42' : '28';
+    const boxColor = isTitle ? 'black@0.7' : 'black@0.4';
+    const boxBorder = isTitle ? '20' : '8';
 
     await new Promise((resolve, reject) => {
       ffmpeg(inFile)
@@ -195,17 +198,17 @@ app.post('/overlay', async (req, res) => {
           filter: 'drawtext',
           options: {
             text:        safeText,
-            fontsize:    '28',
+            fontsize:    fontSize,
             fontcolor:   'white',
             x:           '(w-text_w)/2',
             y:           yPos,
             shadowcolor: 'black',
-            shadowx:     '2',
-            shadowy:     '2',
+            shadowx:     '3',
+            shadowy:     '3',
             box:         '1',
-            boxcolor:    'black@0.4',
-            boxborderw:  '8',
-            line_spacing: '8'
+            boxcolor:    boxColor,
+            boxborderw:  boxBorder,
+            line_spacing: '10'
           }
         }])
         .outputOptions(['-c:a', 'copy'])
@@ -348,7 +351,7 @@ app.post('/analyze-url', async (req, res) => {
     platform = 'youtube';
     try {
       // Get basic info via oEmbed
-      const videoId = url.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1];
+      const videoId = url.match(/(?:v=|youtu\.be\/|shorts\/)([^&?\s\/]+)/)?.[1];
       if (videoId) {
         const oEmbed = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
         const data   = await oEmbed.json();
