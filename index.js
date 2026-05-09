@@ -229,81 +229,46 @@ app.post('/overlay', async (req, res) => {
 // ── Merge videos with text overlays ──────────────────────────
 app.post('/merge-overlay', async (req, res) => {
   const { scenes } = req.body;
-  // scenes = [{videoUrl, text}, ...]
   if (!scenes || !scenes.length) return res.status(400).json({ error: 'No scenes' });
-
   try {
     const tmpDir = tmp.dirSync({ unsafeCleanup: true });
-    const processedFiles = [];
+    const videoFiles = new Array(scenes.length);
 
-    for (let i = 0; i < scenes.length; i++) {
-      const { videoUrl, text } = scenes[i];
-      const inFile  = `${tmpDir.name}/in${i}.mp4`;
-      const outFile = `${tmpDir.name}/out${i}.mp4`;
+    // Download all clips in PARALLEL - much faster than sequential
+    console.log('[Merge] downloading', scenes.length, 'clips in parallel...');
+    await Promise.all(scenes.map(async (scene, i) => {
+      const dest = `${tmpDir.name}/in${i}.mp4`;
+      await downloadFile(scene.videoUrl, dest);
+      videoFiles[i] = dest;
+      console.log('[Merge] clip', i+1, 'of', scenes.length, 'ready');
+    }));
 
-      await downloadFile(videoUrl, inFile);
-
-      if (text && text.trim()) {
-        const safeText = text.replace(/[':]/g, ' ').slice(0, 120);
-        await new Promise((resolve, reject) => {
-          ffmpeg(inFile)
-            .videoFilters([{
-              filter: 'drawtext',
-              options: {
-                text: safeText, fontsize: '28', fontcolor: 'white',
-                x: '(w-text_w)/2', y: '(h-text_h-40)',
-                shadowcolor: 'black', shadowx: '2', shadowy: '2',
-                box: '1', boxcolor: 'black@0.4', boxborderw: '8'
-              }
-            }])
-            .outputOptions(['-c:a', 'copy'])
-            .output(outFile)
-            .on('end', resolve).on('error', reject).run();
-        });
-        processedFiles.push(outFile);
-      } else {
-        processedFiles.push(inFile);
-      }
-    }
-
-    // Now merge all processed files
-    const listFile   = `${tmpDir.name}/list.txt`;
-    const finalFile  = `${tmpDir.name}/final.mp4`;
-    fs.writeFileSync(listFile, processedFiles.map(f => `file '${f}'`).join('\n'));
+    // Fast concat - stream copy only, no re-encoding
+    const listFile  = `${tmpDir.name}/list.txt`;
+    const finalFile = `${tmpDir.name}/final.mp4`;
+    fs.writeFileSync(listFile, videoFiles.map(f => `file '${f}'`).join('
+'));
 
     await new Promise((resolve, reject) => {
       ffmpeg().input(listFile)
         .inputOptions(['-f', 'concat', '-safe', '0'])
-        .outputOptions(['-c:v','libx264','-crf','28','-preset','fast','-c:a','aac','-b:a','96k'])
+        .outputOptions(['-c', 'copy', '-movflags', 'faststart'])
         .output(finalFile)
-        .on('end', resolve).on('error', reject).run();
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
     });
 
+    console.log('[Merge] done!');
     res.set('Content-Type', 'video/mp4');
     res.set('Content-Disposition', 'attachment; filename="videokit-final.mp4"');
     fs.createReadStream(finalFile).pipe(res);
   } catch(err) {
+    console.error('[Merge] error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// HasData trending topics endpoint
-app.get('/trending', async (req, res) => {
-  const { q } = req.query;
-  const key = process.env.HASDATA_KEY;
-  try {
-    const response = await fetch(
-      `https://api.hasdata.com/scrape/google/serp?q=${encodeURIComponent(q)}&gl=us&hl=en`,
-      { headers: { 'x-api-key': key } }
-    );
-    const data = await response.json();
-    const results = (data.organicResults || []).slice(0,5).map(r => r.title);
-    res.json({ trending: results, query: q });
-  } catch(err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 app.listen(process.env.PORT || 3000, () => {
   console.log('VideoKit API running on port', process.env.PORT || 3000);
