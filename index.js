@@ -246,8 +246,7 @@ app.post('/merge-overlay', async (req, res) => {
     // Fast concat - stream copy only, no re-encoding
     const listFile  = `${tmpDir.name}/list.txt`;
     const finalFile = `${tmpDir.name}/final.mp4`;
-    fs.writeFileSync(listFile, videoFiles.map(f => `file '${f}'`).join('
-'));
+    fs.writeFileSync(listFile, videoFiles.map(f => "file '" + f + "'").join("\n"));
 
     await new Promise((resolve, reject) => {
       ffmpeg().input(listFile)
