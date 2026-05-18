@@ -405,3 +405,28 @@ No markdown. Just JSON.`
              `${platform} links cannot be fetched automatically. Please paste the video caption or description below.`
   });
 });
+
+// Image search for slideshow mode
+app.get('/images', async (req, res) => {
+  const { q, duration } = req.query;
+  const key = process.env.PIXABAY_KEY;
+  if (!key) return res.status(500).json({ error: 'No key' });
+  const secs = parseInt(duration)||60;
+  const perPage = secs<=60?6:secs<=300?10:15;
+  try {
+    const r = await fetch(`https://pixabay.com/api/?key=${key}&q=${encodeURIComponent(q)}&per_page=${perPage}&image_type=photo&safesearch=true&orientation=vertical`);
+    const data = await r.json();
+    res.json({ hits: data.hits||[] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Music search
+app.get('/music', async (req, res) => {
+  const key = process.env.PIXABAY_KEY;
+  const { mood } = req.query;
+  try {
+    const r = await fetch(`https://pixabay.com/api/?key=${key}&q=${encodeURIComponent(mood||'background')}&media_type=music&per_page=10`);
+    const data = await r.json();
+    res.json({ hits: data.hits||[] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
