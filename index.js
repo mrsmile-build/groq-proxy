@@ -255,7 +255,7 @@ app.post('/merge-overlay', async (req, res) => {
         const t = setTimeout(() => reject(new Error("timeout")), 20000);
         ffmpeg().input(listFile)
           .inputOptions(["-f","concat","-safe","0"])
-          .outputOptions(["-c","copy","-movflags","+faststart"])
+          .outputOptions(["-c","copy","-movflags","+faststart","-fflags","+genpts"])
           .output(mergedFile)
           .on("end", () => { clearTimeout(t); resolve(); })
           .on("error", (e) => { clearTimeout(t); reject(e); })
@@ -287,7 +287,7 @@ app.post('/merge-overlay', async (req, res) => {
       await new Promise((resolve, reject) => {
         ffmpeg().input(listFile)
           .inputOptions(["-f","concat","-safe","0"])
-          .outputOptions(["-c","copy","-movflags","+faststart"])
+          .outputOptions(["-c","copy","-movflags","+faststart","-fflags","+genpts"])
           .output(mergedFile)
           .on("end", resolve).on("error", reject).run();
       });
