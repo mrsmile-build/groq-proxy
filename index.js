@@ -255,7 +255,7 @@ app.post('/merge-overlay', async (req, res) => {
         const t = setTimeout(() => reject(new Error("timeout")), 20000);
         ffmpeg().input(listFile)
           .inputOptions(["-f","concat","-safe","0"])
-          .outputOptions(["-c","copy"])
+          .outputOptions(["-c","copy","-movflags","+faststart"])
           .output(mergedFile)
           .on("end", () => { clearTimeout(t); resolve(); })
           .on("error", (e) => { clearTimeout(t); reject(e); })
@@ -274,7 +274,7 @@ app.post('/merge-overlay', async (req, res) => {
           const t = setTimeout(() => reject(new Error("timeout")), 30000);
           ffmpeg(videoScenes[i]._file)
             .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,fps=24"])
-            .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","32","-an"])
+            .outputOptions(["-c:v","libx264","-profile:v","baseline","-level","3.0","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-an","-movflags","+faststart"])
             .output(normDest)
             .on("end", () => { clearTimeout(t); resolve(); })
             .on("error", (e) => { clearTimeout(t); reject(e); })
@@ -287,7 +287,7 @@ app.post('/merge-overlay', async (req, res) => {
       await new Promise((resolve, reject) => {
         ffmpeg().input(listFile)
           .inputOptions(["-f","concat","-safe","0"])
-          .outputOptions(["-c","copy"])
+          .outputOptions(["-c","copy","-movflags","+faststart"])
           .output(mergedFile)
           .on("end", resolve).on("error", reject).run();
       });
@@ -301,7 +301,7 @@ app.post('/merge-overlay', async (req, res) => {
         await new Promise((resolve, reject) => {
           const t = setTimeout(() => reject(new Error("timeout")), 15000);
           ffmpeg(mergedFile).input(audioFile)
-            .outputOptions(["-c:v","copy","-c:a","aac","-shortest"])
+            .outputOptions(["-c:v","copy","-c:a","aac","-shortest","-movflags","+faststart"])
             .output(finalFile)
             .on("end", () => { clearTimeout(t); resolve(); })
             .on("error", (e) => { clearTimeout(t); reject(e); })
