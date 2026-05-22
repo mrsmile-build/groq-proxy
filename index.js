@@ -308,10 +308,30 @@ app.post('/merge-overlay', async (req, res) => {
 
     console.log('[Merge] concat done');
 
-    // Step 3: Add voice if provided (very fast - just mux)
+    // Step 3: Add voice if provided (very fast - just mux, no re-encode)
     const finalFile = `${tmpDir.name}/final.mp4`;
-    // For now just rename merged - voice adding comes from frontend
-    fs.renameSync(mergedFile, finalFile);
+    const audioB64  = req.body.audioBase64;
+    if (audioB64) {
+      try {
+        const audioFile = `${tmpDir.name}/voice.mp3`;
+        fs.writeFileSync(audioFile, Buffer.from(audioB64, 'base64'));
+        await new Promise((resolve, reject) => {
+          ffmpeg(mergedFile)
+            .input(audioFile)
+            .outputOptions(['-c:v','copy','-c:a','aac','-shortest'])
+            .output(finalFile)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+        console.log('[Merge] voice added');
+      } catch(ae) {
+        console.warn('[Merge] voice failed, using video only:', ae.message);
+        fs.renameSync(mergedFile, finalFile);
+      }
+    } else {
+      fs.renameSync(mergedFile, finalFile);
+    }
 
     res.set('Content-Type', 'video/mp4');
     res.set('Content-Disposition', 'attachment; filename="videokit-final.mp4"');
