@@ -312,10 +312,13 @@ app.post('/merge-overlay', async (req, res) => {
       fs.copyFileSync(mergedFile, finalFile);
     }
 
-    console.log("[Merge] done, size:", fs.statSync(finalFile).size);
+    const fileBuffer = fs.readFileSync(finalFile);
+    console.log("[Merge] done, size:", fileBuffer.length);
+    tmpDir.removeCallback();
     res.set("Content-Type", "video/mp4");
     res.set("Content-Disposition", "attachment; filename=videokit-final.mp4");
-    fs.createReadStream(finalFile).pipe(res);
+    res.set("Content-Length", fileBuffer.length);
+    res.send(fileBuffer);
   } catch(err) {
     console.error("[Merge] error:", err.message);
     res.status(500).json({ error: err.message });
