@@ -247,51 +247,35 @@ app.post('/merge-overlay', async (req, res) => {
     const mergedFile = tmpDir.name + "/merged.mp4";
     const finalFile  = tmpDir.name + "/final.mp4";
 
-    // Try stream copy first (fast)
-    let mergeOk = false;
-    fs.writeFileSync(listFile, videoScenes.map(s => "file '" + s._file + "'").join("\n"));
-    try {
+    // Normalize all clips then re-encode concat for reliable duration
+    console.log("[Merge] normalizing", videoScenes.length, "clips...");
+    const normFiles = [];
+    for (let i = 0; i < videoScenes.length; i++) {
+      const normDest = tmpDir.name + "/norm" + i + ".mp4";
       await new Promise((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error("timeout")), 20000);
-        ffmpeg().input(listFile)
-          .inputOptions(["-f","concat","-safe","0"])
-          .outputOptions(["-c","copy","-movflags","+faststart","-fflags","+genpts"])
-          .output(mergedFile)
+        const t = setTimeout(() => reject(new Error("norm timeout")), 40000);
+        ffmpeg(videoScenes[i]._file)
+          .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24"])
+          .outputOptions(["-c:v","libx264","-profile:v","baseline","-level","3.0","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-an"])
+          .output(normDest)
           .on("end", () => { clearTimeout(t); resolve(); })
           .on("error", (e) => { clearTimeout(t); reject(e); })
           .run();
       });
-      if (fs.statSync(mergedFile).size > 10000) mergeOk = true;
-    } catch(e) { console.log("[Merge] stream copy failed:", e.message); }
-
-    // Fallback: normalize then concat
-    if (!mergeOk) {
-      console.log("[Merge] normalizing clips...");
-      const normFiles = [];
-      for (let i = 0; i < videoScenes.length; i++) {
-        const normDest = tmpDir.name + "/norm" + i + ".mp4";
-        await new Promise((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error("timeout")), 30000);
-          ffmpeg(videoScenes[i]._file)
-            .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,fps=24"])
-            .outputOptions(["-c:v","libx264","-profile:v","baseline","-level","3.0","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-an","-movflags","+faststart"])
-            .output(normDest)
-            .on("end", () => { clearTimeout(t); resolve(); })
-            .on("error", (e) => { clearTimeout(t); reject(e); })
-            .run();
-        });
-        normFiles.push(normDest);
-        console.log("[Merge] normalized", i+1);
-      }
-      fs.writeFileSync(listFile, normFiles.map(f => "file '" + f + "'").join("\n"));
-      await new Promise((resolve, reject) => {
-        ffmpeg().input(listFile)
-          .inputOptions(["-f","concat","-safe","0"])
-          .outputOptions(["-c","copy","-movflags","+faststart","-fflags","+genpts"])
-          .output(mergedFile)
-          .on("end", resolve).on("error", reject).run();
-      });
+      normFiles.push(normDest);
+      console.log("[Merge] normalized", i+1, "of", videoScenes.length);
     }
+    fs.writeFileSync(listFile, normFiles.map(f => "file '" + f + "'").join("\n"));
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("concat timeout")), 60000);
+      ffmpeg().input(listFile)
+        .inputOptions(["-f","concat","-safe","0"])
+        .outputOptions(["-c:v","libx264","-profile:v","baseline","-level","3.0","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-movflags","+faststart"])
+        .output(mergedFile)
+        .on("end", () => { clearTimeout(t); console.log("[Merge] concat done, size:", fs.statSync(mergedFile).size); resolve(); })
+        .on("error", (e) => { clearTimeout(t); reject(e); })
+        .run();
+    });
 
     // Add voice
     if (audioBase64) {
