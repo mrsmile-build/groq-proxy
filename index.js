@@ -230,60 +230,98 @@ app.post('/overlay', async (req, res) => {
 app.post('/merge-overlay', async (req, res) => {
   const { scenes, audioBase64 } = req.body;
   if (!scenes || !scenes.length) return res.status(400).json({ error: 'No scenes' });
+
   try {
     const tmpDir = tmp.dirSync({ unsafeCleanup: true });
-    const videoScenes = scenes.filter(s => s.videoUrl);
-    if (!videoScenes.length) return res.status(400).json({ error: 'No video URLs' });
+    const clipFiles = [];
 
-    console.log("[Merge] downloading", videoScenes.length, "clips...");
-    await Promise.all(videoScenes.map(async (scene, i) => {
-      const dest = tmpDir.name + "/raw" + i + ".mp4";
-      await downloadFile(scene.videoUrl, dest);
-      videoScenes[i]._file = dest;
-      console.log("[Merge] clip", i+1, "ready");
+    console.log("[Merge] processing", scenes.length, "scenes...");
+
+    // Process all scenes in parallel
+    await Promise.all(scenes.map(async (scene, i) => {
+      const outFile = tmpDir.name + "/clip" + i + ".mp4";
+      const dur = scene.duration || 5;
+
+      if (!scene.videoUrl || scene.isTextCard) {
+        // Text card - generate from ffmpeg directly (fastest)
+        const txt = (scene.text || "Scene " + (i+1)).replace(/['"\:]/g, " ").slice(0, 80);
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error("text timeout")), 15000);
+          ffmpeg()
+            .input("color=c=black:s=720x1280:r=24")
+            .inputOptions(["-f","lavfi"])
+            .duration(dur)
+            .videoFilters([{filter:"drawtext",options:{text:txt,fontsize:"36",fontcolor:"white",x:"(w-text_w)/2",y:"(h-text_h)/2",line_spacing:"8"}}])
+            .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-profile:v","baseline"])
+            .output(outFile)
+            .on("end", () => { clearTimeout(t); resolve(); })
+            .on("error", (e) => { clearTimeout(t); reject(e); })
+            .run();
+        });
+      } else {
+        // Image or video - detect by URL
+        const isImage = /\.(jpg|jpeg|png|webp)/i.test(scene.videoUrl);
+        const srcFile = tmpDir.name + "/src" + i + (isImage ? ".jpg" : ".mp4");
+        await downloadFile(scene.videoUrl, srcFile);
+
+        if (isImage) {
+          // Image slideshow - fast
+          await new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error("img timeout")), 20000);
+            ffmpeg()
+              .input(srcFile).inputOptions(["-loop","1"])
+              .duration(dur)
+              .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1"])
+              .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-profile:v","baseline","-an"])
+              .output(outFile)
+              .on("end", () => { clearTimeout(t); resolve(); })
+              .on("error", (e) => { clearTimeout(t); reject(e); })
+              .run();
+          });
+        } else {
+          // Stock video - just trim and normalize
+          await new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error("vid timeout")), 30000);
+            ffmpeg(srcFile)
+              .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24"])
+              .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-profile:v","baseline","-an","-t",String(dur)])
+              .output(outFile)
+              .on("end", () => { clearTimeout(t); resolve(); })
+              .on("error", (e) => { clearTimeout(t); reject(e); })
+              .run();
+          });
+        }
+      }
+
+      clipFiles[i] = outFile;
+      console.log("[Merge] clip", i+1, "done");
     }));
 
+    // Concat all clips (stream copy - all same format now)
     const listFile   = tmpDir.name + "/list.txt";
     const mergedFile = tmpDir.name + "/merged.mp4";
     const finalFile  = tmpDir.name + "/final.mp4";
+    fs.writeFileSync(listFile, clipFiles.map(f => "file '" + f + "'").join("\n"));
 
-    // Normalize all clips then re-encode concat for reliable duration
-    console.log("[Merge] normalizing", videoScenes.length, "clips...");
-    const normFiles = [];
-    for (let i = 0; i < videoScenes.length; i++) {
-      const normDest = tmpDir.name + "/norm" + i + ".mp4";
-      await new Promise((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error("norm timeout")), 40000);
-        ffmpeg(videoScenes[i]._file)
-          .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24"])
-          .outputOptions(["-c:v","libx264","-profile:v","baseline","-level","3.0","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-an"])
-          .output(normDest)
-          .on("end", () => { clearTimeout(t); resolve(); })
-          .on("error", (e) => { clearTimeout(t); reject(e); })
-          .run();
-      });
-      normFiles.push(normDest);
-      console.log("[Merge] normalized", i+1, "of", videoScenes.length);
-    }
-    fs.writeFileSync(listFile, normFiles.map(f => "file '" + f + "'").join("\n"));
     await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("concat timeout")), 60000);
+      const t = setTimeout(() => reject(new Error("concat timeout")), 30000);
       ffmpeg().input(listFile)
         .inputOptions(["-f","concat","-safe","0"])
-        .outputOptions(["-c:v","libx264","-profile:v","baseline","-level","3.0","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-movflags","+faststart"])
+        .outputOptions(["-c","copy","-movflags","+faststart"])
         .output(mergedFile)
-        .on("end", () => { clearTimeout(t); console.log("[Merge] concat done, size:", fs.statSync(mergedFile).size); resolve(); })
+        .on("end", () => { clearTimeout(t); resolve(); })
         .on("error", (e) => { clearTimeout(t); reject(e); })
         .run();
     });
+    console.log("[Merge] concat done, size:", fs.statSync(mergedFile).size);
 
-    // Add voice
+    // Add voice if provided
     if (audioBase64) {
       try {
         const audioFile = tmpDir.name + "/voice.mp3";
         fs.writeFileSync(audioFile, Buffer.from(audioBase64, "base64"));
         await new Promise((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error("timeout")), 15000);
+          const t = setTimeout(() => reject(new Error("audio timeout")), 20000);
           ffmpeg(mergedFile).input(audioFile)
             .outputOptions(["-c:v","copy","-c:a","aac","-shortest","-movflags","+faststart"])
             .output(finalFile)
@@ -291,18 +329,23 @@ app.post('/merge-overlay', async (req, res) => {
             .on("error", (e) => { clearTimeout(t); reject(e); })
             .run();
         });
-      } catch(ae) { console.warn("[Merge] voice failed:", ae.message); fs.copyFileSync(mergedFile, finalFile); }
+        console.log("[Merge] voice added");
+      } catch(ae) {
+        console.warn("[Merge] voice failed:", ae.message);
+        fs.copyFileSync(mergedFile, finalFile);
+      }
     } else {
       fs.copyFileSync(mergedFile, finalFile);
     }
 
     const fileBuffer = fs.readFileSync(finalFile);
-    console.log("[Merge] done, size:", fileBuffer.length);
+    console.log("[Merge] sending, size:", fileBuffer.length);
     tmpDir.removeCallback();
     res.set("Content-Type", "video/mp4");
     res.set("Content-Disposition", "attachment; filename=videokit-final.mp4");
     res.set("Content-Length", fileBuffer.length);
     res.send(fileBuffer);
+
   } catch(err) {
     console.error("[Merge] error:", err.message);
     res.status(500).json({ error: err.message });
