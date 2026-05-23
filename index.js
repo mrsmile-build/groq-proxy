@@ -260,7 +260,7 @@ app.post('/merge-overlay', async (req, res) => {
         });
       } else {
         // Image or video - detect by URL
-        const isImage = /\.(jpg|jpeg|png|webp)/i.test(scene.videoUrl);
+        const isImage = scene.isImage || /\.(jpg|jpeg|png|webp)/i.test(scene.videoUrl||'');
         const srcFile = tmpDir.name + "/src" + i + (isImage ? ".jpg" : ".mp4");
         await downloadFile(scene.videoUrl, srcFile);
 
