@@ -237,8 +237,8 @@ app.post('/merge-overlay', async (req, res) => {
 
     console.log("[Merge] processing", scenes.length, "scenes...");
 
-    // Process all scenes in parallel
-    await Promise.all(scenes.map(async (scene, i) => {
+    // Process sequentially - parallel overloads Render free tier
+    for (let i = 0; i < scenes.length; i++) { const scene = scenes[i]; await (async () => {
       const outFile = tmpDir.name + "/clip" + i + ".mp4";
       const dur = scene.duration || 5;
 
@@ -295,7 +295,7 @@ app.post('/merge-overlay', async (req, res) => {
 
       clipFiles[i] = outFile;
       console.log("[Merge] clip", i+1, "done");
-    }));
+    })(); }
 
     // Concat all clips (stream copy - all same format now)
     const listFile   = tmpDir.name + "/list.txt";
