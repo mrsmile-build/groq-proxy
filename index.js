@@ -267,7 +267,7 @@ app.post('/merge-overlay', async (req, res) => {
         if (isImage) {
           // Image slideshow - fast
           await new Promise((resolve, reject) => {
-            const t = setTimeout(() => reject(new Error("img timeout")), 20000);
+            const t = setTimeout(() => reject(new Error("img timeout")), 90000);
             ffmpeg()
               .input(srcFile).inputOptions(["-loop","1"])
               .duration(dur)
