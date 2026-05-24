@@ -17,7 +17,7 @@ app.get('/', (req, res) => res.send('VideoKit API Running'));
 
 // ── AI Script Generation ──────────────────────────────────────
 app.post('/generate', async (req, res) => {
-  const keys = [process.env.GROQ_KEY, process.env.GROQ_KEY2].filter(Boolean);
+  const keys = [process.env.GROQ_KEY, process.env.GROQ_KEY2, process.env.GROQ_KEY3].filter(Boolean);
   let lastError = null;
   for (const key of keys) {
     try {
@@ -426,7 +426,7 @@ app.post('/analyze-url', async (req, res) => {
   }
 
   // Use Groq to analyze what we have and generate similar script blueprint
-  const keys = [process.env.GROQ_KEY, process.env.GROQ_KEY2].filter(Boolean);
+  const keys = [process.env.GROQ_KEY, process.env.GROQ_KEY2, process.env.GROQ_KEY3].filter(Boolean);
   const key  = keys[0];
 
   if (title || transcript) {
