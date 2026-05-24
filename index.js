@@ -85,9 +85,11 @@ app.get('/videos', async (req, res) => {
 
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
+  // Remove ellipsis that gets spoken literally
+  const cleanText = (text||'').replace(/\.\.\.+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!text || !text.trim()) return res.status(400).json({ error: 'No text' });
 
-  const safeText = text.slice(0, 300);
+  const safeText = cleanText.slice(0, 500);
 
   // TikTok TTS - free, no key, real male/female voices
   const voiceMap = {
