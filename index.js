@@ -379,6 +379,135 @@ app.post('/merge-overlay', async (req, res) => {
 });
 
 
+// ── Async Job System ──────────────────────────────────────────
+const jobs = new Map(); // jobId -> {status, progress, file, error}
+
+app.post('/merge-start', async (req, res) => {
+  const { scenes, audioBase64 } = req.body;
+  if (!scenes || !scenes.length) return res.status(400).json({ error: 'No scenes' });
+
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  jobs.set(jobId, { status: 'processing', progress: 5, file: null, error: null });
+  res.json({ jobId });
+
+  // Process in background
+  (async () => {
+    try {
+      const tmpDir = tmp.dirSync({ unsafeCleanup: true });
+      const clipFiles = [];
+      const total = scenes.length;
+
+      for (let i = 0; i < scenes.length; i++) {
+        const scene   = scenes[i];
+        const outFile = tmpDir.name + '/clip' + i + '.mp4';
+        const dur     = scene.duration || 10;
+
+        if (!scene.videoUrl || scene.isTextCard) {
+          const txt = (scene.text||'Scene '+(i+1)).replace(/['"\\:]/g,' ').slice(0,80);
+          await new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error('text timeout')), 30000);
+            ffmpeg()
+              .input('color=c=black:s=640x360:r=15').inputOptions(['-f','lavfi'])
+              .duration(dur)
+              .videoFilters([{filter:'drawtext',options:{text:txt,fontsize:'24',fontcolor:'white',x:'(w-text_w)/2',y:'(h-text_h)/2'}}])
+              .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline'])
+              .output(outFile)
+              .on('end',()=>{clearTimeout(t);resolve();})
+              .on('error',(e)=>{clearTimeout(t);reject(e);})
+              .run();
+          });
+        } else {
+          const srcFile = tmpDir.name + '/src' + i + (scene.isImage?'.jpg':'.mp4');
+          await downloadFile(scene.videoUrl, srcFile);
+          await new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error('clip timeout')), 90000);
+            const filters = ['scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1'];
+            if (scene.text) filters.push({filter:'drawtext',options:{text:(scene.text||'').replace(/[\'"\\:]/g,' ').slice(0,60),fontsize:'16',fontcolor:'white',x:'(w-text_w)/2',y:'h-th-15',box:'1',boxcolor:'black@0.5',boxborderw:'5'}});
+            const ff = scene.isImage
+              ? ffmpeg().input(srcFile).inputOptions(['-loop','1']).duration(dur)
+              : ffmpeg(srcFile);
+            ff.videoFilters(filters)
+              .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an','-r','15','-t',String(dur)])
+              .output(outFile)
+              .on('end',()=>{clearTimeout(t);resolve();})
+              .on('error',(e)=>{clearTimeout(t);reject(e);})
+              .run();
+          });
+        }
+
+        clipFiles[i] = outFile;
+        const pct = Math.round(10 + (i+1)/total * 55);
+        jobs.get(jobId).progress = pct;
+        console.log('[Job '+jobId+'] clip '+(i+1)+'/'+total+' done, '+pct+'%');
+      }
+
+      // Concat
+      jobs.get(jobId).progress = 70;
+      const listFile   = tmpDir.name + '/list.txt';
+      const mergedFile = tmpDir.name + '/merged.mp4';
+      const finalFile  = tmpDir.name + '/final.mp4';
+      fs.writeFileSync(listFile, clipFiles.map(f => "file '"+f+"'").join('\n'));
+      await new Promise((resolve,reject) => {
+        ffmpeg().input(listFile).inputOptions(['-f','concat','-safe','0'])
+          .outputOptions(['-c','copy','-movflags','+faststart'])
+          .output(mergedFile)
+          .on('end',resolve).on('error',reject).run();
+      });
+
+      // Add voice
+      jobs.get(jobId).progress = 85;
+      if (audioBase64) {
+        try {
+          const audioFile = tmpDir.name + '/voice.mp3';
+          fs.writeFileSync(audioFile, Buffer.from(audioBase64,'base64'));
+          await new Promise((resolve,reject) => {
+            const t = setTimeout(()=>reject(new Error('audio timeout')),30000);
+            ffmpeg(mergedFile).input(audioFile)
+              .outputOptions(['-c:v','copy','-c:a','aac','-shortest','-movflags','+faststart'])
+              .output(finalFile)
+              .on('end',()=>{clearTimeout(t);resolve();})
+              .on('error',(e)=>{clearTimeout(t);reject(e);})
+              .run();
+          });
+        } catch(ae) { fs.copyFileSync(mergedFile,finalFile); }
+      } else {
+        fs.copyFileSync(mergedFile,finalFile);
+      }
+
+      const fileBuffer = fs.readFileSync(finalFile);
+      tmpDir.removeCallback();
+      jobs.get(jobId).status   = 'done';
+      jobs.get(jobId).progress = 100;
+      jobs.get(jobId).file     = fileBuffer;
+      console.log('[Job '+jobId+'] complete, size:', fileBuffer.length);
+
+      // Clean up job after 10 minutes
+      setTimeout(() => jobs.delete(jobId), 600000);
+    } catch(err) {
+      console.error('[Job '+jobId+'] error:', err.message);
+      if (jobs.get(jobId)) {
+        jobs.get(jobId).status = 'error';
+        jobs.get(jobId).error  = err.message;
+      }
+    }
+  })();
+});
+
+app.get('/merge-status/:jobId', (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status === 'done' && job.file) {
+    res.set('Content-Type', 'video/mp4');
+    res.set('Content-Disposition', 'attachment; filename=videokit-final.mp4');
+    res.set('Content-Length', job.file.length);
+    const buf = job.file;
+    job.file = null; // free memory
+    return res.send(buf);
+  }
+  res.json({ status: job.status, progress: job.progress, error: job.error });
+});
+
+
 app.listen(process.env.PORT || 3000, () => {
   console.log('VideoKit API running on port', process.env.PORT || 3000);
 });
