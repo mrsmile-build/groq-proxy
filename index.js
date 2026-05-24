@@ -109,18 +109,42 @@ app.post('/tts-voicerss', async (req, res) => {
 
   const tikVoice = voiceMap[voice] || 'en_us_006';
 
+  // Split into chunks of 200 chars (TikTok TTS limit per request)
+  const words  = safeText.split(' ');
+  const chunks = [];
+  let cur = '';
+  for (const word of words) {
+    if ((cur + ' ' + word).trim().length > 200) {
+      if (cur.trim()) chunks.push(cur.trim());
+      cur = word;
+    } else {
+      cur = cur ? cur + ' ' + word : word;
+    }
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+
+  console.log('[TTS] chunks:', chunks.length, 'for', safeText.length, 'chars');
+
   try {
-    const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: safeText, voice: tikVoice })
-    });
-    const data = await r.json();
-    if (data.success && data.data) {
-      const buf = Buffer.from(data.data, 'base64');
+    const audioBufs = [];
+    for (const chunk of chunks) {
+      const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: chunk, voice: tikVoice })
+      });
+      const data = await r.json();
+      if (data.success && data.data) {
+        audioBufs.push(Buffer.from(data.data, 'base64'));
+      }
+      // Small delay between chunks
+      await new Promise(r => setTimeout(r, 200));
+    }
+    if (audioBufs.length > 0) {
+      const combined = Buffer.concat(audioBufs);
       res.set('Content-Type', 'audio/mpeg');
-      res.set('X-TTS-Source', 'tiktok');
-      return res.send(buf);
+      res.set('X-TTS-Source', 'tiktok-chunked');
+      return res.send(combined);
     }
   } catch(e) { console.warn('[TTS] TikTok failed:', e.message); }
 
