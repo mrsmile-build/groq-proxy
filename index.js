@@ -409,7 +409,7 @@ app.post('/merge-start', async (req, res) => {
             ffmpeg()
               .input('color=c=black:s=640x360:r=15').inputOptions(['-f','lavfi'])
               .duration(dur)
-              .videoFilters([{filter:'drawtext',options:{text:txt,fontsize:'24',fontcolor:'white',x:'(w-text_w)/2',y:'(h-text_h)/2'}}])
+              .videoFilters(['geq=r=0:g=0:b=0'])
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline'])
               .output(outFile)
               .on('end',()=>{clearTimeout(t);resolve();})
