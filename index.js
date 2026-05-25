@@ -274,10 +274,10 @@ app.post('/merge-overlay', async (req, res) => {
         await new Promise((resolve, reject) => {
           const t = setTimeout(() => reject(new Error("text timeout")), 15000);
           ffmpeg()
-            .input("color=c=black:s=720x1280:r=24")
+            .input("color=black:640x360:15")
             .inputOptions(["-f","lavfi"])
             .duration(dur)
-            .videoFilters([{filter:"drawtext",options:{text:txt,fontsize:"36",fontcolor:"white",x:"(w-text_w)/2",y:"(h-text_h)/2",line_spacing:"8"}}])
+            .videoFilters(["scale=720:1280"])
             .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-profile:v","baseline"])
             .output(outFile)
             .on("end", () => { clearTimeout(t); resolve(); })
@@ -297,7 +297,7 @@ app.post('/merge-overlay', async (req, res) => {
             ffmpeg()
               .input(srcFile).inputOptions(["-loop","1"])
               .duration(dur)
-              .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1"])
+              .videoFilters(["scale=720:1280"])
               .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-profile:v","baseline","-an"])
               .output(outFile)
               .on("end", () => { clearTimeout(t); resolve(); })
@@ -309,7 +309,7 @@ app.post('/merge-overlay', async (req, res) => {
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error("vid timeout")), 30000);
             ffmpeg(srcFile)
-              .videoFilters(["scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24"])
+              .videoFilters(["scale=640:360,fps=24"])
               .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-profile:v","baseline","-an","-t",String(dur)])
               .output(outFile)
               .on("end", () => { clearTimeout(t); resolve(); })
@@ -407,7 +407,7 @@ app.post('/merge-start', async (req, res) => {
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
             ffmpeg()
-              .input('color=c=black:s=640x360:r=15').inputOptions(['-f','lavfi'])
+              .input('color=black:640x360:15').inputOptions(['-f','lavfi'])
               .duration(dur)
               .videoFilters(['scale=640:360'])
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline'])
@@ -421,7 +421,7 @@ app.post('/merge-start', async (req, res) => {
           await downloadFile(scene.videoUrl, srcFile);
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('clip timeout')), 90000);
-            const filters = ['scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1'];
+            const filters = ['scale=640:360'];
             if (scene.text) filters.push({filter:'drawtext',options:{text:(scene.text||'').replace(/[\'"\\:]/g,' ').slice(0,60),fontsize:'16',fontcolor:'white',x:'(w-text_w)/2',y:'h-th-15',box:'1',boxcolor:'black@0.5',boxborderw:'5'}});
             const ff = scene.isImage
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1']).duration(dur)
