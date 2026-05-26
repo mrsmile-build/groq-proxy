@@ -420,14 +420,12 @@ app.post('/merge-start', async (req, res) => {
           const srcFile = tmpDir.name + '/src' + i + (scene.isImage?'.jpg':'.mp4');
           await downloadFile(scene.videoUrl, srcFile);
           await new Promise((resolve, reject) => {
+          await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('clip timeout')), 90000);
-            const filters = ['scale=640:360'];
-            if (scene.text) filters.push({filter:'drawtext',options:{text:(scene.text||'').replace(/[\'"\\:]/g,' ').slice(0,60),fontsize:'16',fontcolor:'white',x:'(w-text_w)/2',y:'h-th-15',box:'1',boxcolor:'black@0.5',boxborderw:'5'}});
             const ff = scene.isImage
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1']).duration(dur)
               : ffmpeg(srcFile);
-            ff.videoFilters(filters)
-              .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an','-r','15','-t',String(dur)])
+            ff.outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an','-r','15','-t',String(dur)])
               .output(outFile)
               .on('end',()=>{clearTimeout(t);resolve();})
               .on('error',(e)=>{clearTimeout(t);reject(e);})
