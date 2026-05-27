@@ -403,14 +403,13 @@ app.post('/merge-start', async (req, res) => {
         const dur     = scene.duration || 10;
 
         if (!scene.videoUrl || scene.isTextCard) {
-          const txt = (scene.text||'Scene '+(i+1)).replace(/['"\\:]/g,' ').slice(0,80);
+          // Text card - solid black video
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
             ffmpeg()
-              .input('color=black:640x360:15').inputOptions(['-f','lavfi'])
+              .input('color=black:size=640x360:rate=15').inputOptions(['-f','lavfi'])
               .duration(dur)
-              .videoFilters(['scale=640:360'])
-              .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline'])
+              .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an'])
               .output(outFile)
               .on('end',()=>{clearTimeout(t);resolve();})
               .on('error',(e)=>{clearTimeout(t);reject(e);})
@@ -419,7 +418,6 @@ app.post('/merge-start', async (req, res) => {
         } else {
           const srcFile = tmpDir.name + '/src' + i + (scene.isImage?'.jpg':'.mp4');
           await downloadFile(scene.videoUrl, srcFile);
-          await new Promise((resolve, reject) => {
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('clip timeout')), 90000);
             const ff = scene.isImage
@@ -431,6 +429,7 @@ app.post('/merge-start', async (req, res) => {
               .on('error',(e)=>{clearTimeout(t);reject(e);})
               .run();
           });
+        }
         }
 
         clipFiles[i] = outFile;
