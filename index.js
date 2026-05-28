@@ -407,7 +407,7 @@ app.post('/merge-start', async (req, res) => {
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
             ffmpeg()
-              .input('color=black:size=640x360:rate=15').inputOptions(['-f','lavfi'])
+              .input('color=s=640x360:r=15').inputOptions(['-f','lavfi'])
               .duration(dur)
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an'])
               .output(outFile)
