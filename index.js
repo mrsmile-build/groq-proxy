@@ -430,7 +430,6 @@ app.post('/merge-start', async (req, res) => {
               .run();
           });
         }
-        }
 
         clipFiles[i] = outFile;
         const pct = Math.round(10 + (i+1)/total * 55);
