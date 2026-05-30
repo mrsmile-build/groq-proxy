@@ -7,6 +7,21 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const tmp = require('tmp');
 
 const app = express();
+
+const rateLimit = new Map();
+function checkRate(ip) {
+  const now = Date.now();
+  const window = 60000; // 1 minute
+  const max = 20; // 20 requests per minute
+  if (!rateLimit.has(ip)) rateLimit.set(ip, []);
+  const times = rateLimit.get(ip).filter(t => now - t < window);
+  if (times.length >= max) return false;
+  times.push(now);
+  rateLimit.set(ip, times);
+  return true;
+}
+
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
@@ -17,6 +32,8 @@ app.get('/', (req, res) => res.send('VideoKit API Running'));
 
 // ── AI Script Generation ──────────────────────────────────────
 app.post('/generate', async (req, res) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  if (!checkRate(ip)) return res.status(429).json({ error: 'Too many requests. Please wait a minute.' });
   const keys = [process.env.GROQ_KEY, process.env.GROQ_KEY2, process.env.GROQ_KEY3].filter(Boolean);
   let lastError = null;
   for (const key of keys) {
