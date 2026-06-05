@@ -538,6 +538,20 @@ app.get('/trending', async (req, res) => {
   }
 });
 
+app.get('/proxy-image', async (req, res) => {
+  const url = req.query.url;
+  try {
+    const r = await fetch(url);
+    const buf = await r.arrayBuffer();
+    const ct = r.headers.get('content-type') || 'image/jpeg';
+    res.set('Content-Type', ct);
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(Buffer.from(buf));
+  } catch(e) { res.status(500).send(e.message); }
+});
+
+
 app.listen(process.env.PORT || 3000, () => {
   console.log('VideoKit API running on port', process.env.PORT || 3000);
 });
