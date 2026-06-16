@@ -438,9 +438,9 @@ app.post('/merge-start', async (req, res) => {
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('clip timeout')), 90000);
             const ff = scene.isImage
-              ? ffmpeg().input(srcFile).inputOptions(['-loop','1']).duration(dur)
+              ? ffmpeg().input(srcFile).inputOptions(['-loop','1','-t',String(dur)])
               : ffmpeg(srcFile);
-            ff.outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an','-r','15','-t',String(dur)])
+            ff.outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
               .output(outFile)
               .on('end',()=>{clearTimeout(t);resolve();})
               .on('error',(e)=>{clearTimeout(t);reject(e);})
