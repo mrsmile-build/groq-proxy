@@ -438,7 +438,8 @@ app.post('/merge-start', async (req, res) => {
 
         if (!scene.videoUrl || scene.isTextCard) {
           // Text card - solid black video with text
-          const cardText = (scene.text||'').replace(/['":\\]/g,' ').slice(0,90);
+          const cardTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,150);
+          const cardText = cardTextRaw ? wrapText(cardTextRaw, 26) : '';
           const cardFilters = [];
           if (cardText) {
             cardFilters.push({filter:'drawtext',options:{text:cardText,fontsize:24,fontcolor:'white',x:'(w-text_w)/2',y:'(h-text_h)/2',box:1,boxcolor:'black@0.4',boxborderw:8}});
@@ -464,7 +465,8 @@ app.post('/merge-start', async (req, res) => {
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1','-t',String(dur)])
               : ffmpeg(srcFile);
             const clipFilters = ['scale=640:360:force_original_aspect_ratio=decrease','pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black'];
-            const clipText = (scene.text||'').replace(/['":\\]/g,' ').slice(0,90);
+            const clipTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,120);
+            const clipText = clipTextRaw ? wrapText(clipTextRaw, 28) : '';
             if (clipText) {
               clipFilters.push({filter:'drawtext',options:{text:clipText,fontsize:18,fontcolor:'white',x:'(w-text_w)/2',y:'h-th-10',box:1,boxcolor:'black@0.55',boxborderw:8,line_spacing:6}});
             }
