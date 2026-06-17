@@ -6,6 +6,23 @@ const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const tmp = require('tmp');
 
+
+function wrapText(text, maxCharsPerLine) {
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    if ((current + ' ' + word).trim().length > maxCharsPerLine) {
+      if (current.trim()) lines.push(current.trim());
+      current = word;
+    } else {
+      current = current ? current + ' ' + word : word;
+    }
+  }
+  if (current.trim()) lines.push(current.trim());
+  return lines.slice(0, 3).join('\n');
+}
+
 const app = express();
 
 const rateLimit = new Map();
@@ -449,7 +466,7 @@ app.post('/merge-start', async (req, res) => {
             const clipFilters = ['scale=640:360:force_original_aspect_ratio=decrease','pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black'];
             const clipText = (scene.text||'').replace(/['":\\]/g,' ').slice(0,90);
             if (clipText) {
-              clipFilters.push({filter:'drawtext',options:{text:clipText,fontsize:18,fontcolor:'white',x:'(w-text_w)/2',y:'h-th-15',box:1,boxcolor:'black@0.5',boxborderw:6}});
+              clipFilters.push({filter:'drawtext',options:{text:clipText,fontsize:18,fontcolor:'white',x:'(w-text_w)/2',y:'h-th-10',box:1,boxcolor:'black@0.55',boxborderw:8,line_spacing:6}});
             }
             ff.videoFilters(clipFilters)
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
