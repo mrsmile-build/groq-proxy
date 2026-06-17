@@ -420,13 +420,19 @@ app.post('/merge-start', async (req, res) => {
         const dur     = scene.duration || 10;
 
         if (!scene.videoUrl || scene.isTextCard) {
-          // Text card - solid black video
+          // Text card - solid black video with text
+          const cardText = (scene.text||'').replace(/['":\\]/g,' ').slice(0,90);
+          const cardFilters = [];
+          if (cardText) {
+            cardFilters.push({filter:'drawtext',options:{text:cardText,fontsize:24,fontcolor:'white',x:'(w-text_w)/2',y:'(h-text_h)/2',box:1,boxcolor:'black@0.4',boxborderw:8}});
+          }
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
-            ffmpeg()
+            const ffc = ffmpeg()
               .input('color=s=640x360:r=15').inputOptions(['-f','lavfi'])
-              .duration(dur)
-              .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an'])
+              .duration(dur);
+            if (cardFilters.length) ffc.videoFilters(cardFilters);
+            ffc.outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an'])
               .output(outFile)
               .on('end',()=>{clearTimeout(t);resolve();})
               .on('error',(e)=>{clearTimeout(t);reject(e);})
@@ -440,7 +446,12 @@ app.post('/merge-start', async (req, res) => {
             const ff = scene.isImage
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1','-t',String(dur)])
               : ffmpeg(srcFile);
-            ff.videoFilters(['scale=640:360:force_original_aspect_ratio=decrease','pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black'])
+            const clipFilters = ['scale=640:360:force_original_aspect_ratio=decrease','pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black'];
+            const clipText = (scene.text||'').replace(/['":\\]/g,' ').slice(0,90);
+            if (clipText) {
+              clipFilters.push({filter:'drawtext',options:{text:clipText,fontsize:18,fontcolor:'white',x:'(w-text_w)/2',y:'h-th-15',box:1,boxcolor:'black@0.5',boxborderw:6}});
+            }
+            ff.videoFilters(clipFilters)
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
               .output(outFile)
               .on('end',()=>{clearTimeout(t);resolve();})
