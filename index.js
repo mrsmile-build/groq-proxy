@@ -440,7 +440,8 @@ app.post('/merge-start', async (req, res) => {
             const ff = scene.isImage
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1','-t',String(dur)])
               : ffmpeg(srcFile);
-            ff.outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
+            ff.videoFilters(['scale=640:360:force_original_aspect_ratio=decrease','pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black'])
+              .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
               .output(outFile)
               .on('end',()=>{clearTimeout(t);resolve();})
               .on('error',(e)=>{clearTimeout(t);reject(e);})
