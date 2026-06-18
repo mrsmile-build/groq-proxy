@@ -439,10 +439,10 @@ app.post('/merge-start', async (req, res) => {
         if (!scene.videoUrl || scene.isTextCard) {
           // Text card - solid black video with text
           const cardTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,150);
-          const cardText = cardTextRaw ? wrapText(cardTextRaw, 26) : '';
+          const cardText = cardTextRaw ? wrapText(cardTextRaw, 22) : '';
           const cardFilters = [];
           if (cardText) {
-            cardFilters.push({filter:'drawtext',options:{text:cardText,fontsize:24,fontcolor:'white',x:'(w-text_w)/2',y:'(h-text_h)/2',box:1,boxcolor:'black@0.4',boxborderw:8}});
+            cardFilters.push({filter:'drawtext',options:{text:cardText,fontsize:42,fontcolor:'white',x:'(w-text_w)/2',y:'(h-text_h)/2',box:1,boxcolor:'black@0.45',boxborderw:18,line_spacing:12}});
           }
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
@@ -466,9 +466,9 @@ app.post('/merge-start', async (req, res) => {
               : ffmpeg(srcFile);
             const clipFilters = ['scale=720:1280:force_original_aspect_ratio=decrease','pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black'];
             const clipTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,120);
-            const clipText = clipTextRaw ? wrapText(clipTextRaw, 28) : '';
+            const clipText = clipTextRaw ? wrapText(clipTextRaw, 22) : '';
             if (clipText) {
-              clipFilters.push({filter:'drawtext',options:{text:clipText,fontsize:18,fontcolor:'white',x:'(w-text_w)/2',y:'h-th-10',box:1,boxcolor:'black@0.55',boxborderw:8,line_spacing:6}});
+              clipFilters.push({filter:'drawtext',options:{text:clipText,fontsize:34,fontcolor:'white',x:'(w-text_w)/2',y:'h-th-60',box:1,boxcolor:'black@0.55',boxborderw:16,line_spacing:10}});
             }
             ff.videoFilters(clipFilters)
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
