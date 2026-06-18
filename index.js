@@ -417,7 +417,7 @@ app.post('/merge-overlay', async (req, res) => {
 const jobs = new Map(); // jobId -> {status, progress, file, error}
 
 app.post('/merge-start', async (req, res) => {
-  const { scenes, audioBase64 } = req.body;
+  const { scenes, audioBase64, musicUrl } = req.body;
   if (!scenes || !scenes.length) return res.status(400).json({ error: 'No scenes' });
 
   const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -498,21 +498,50 @@ app.post('/merge-start', async (req, res) => {
           .on('end',resolve).on('error',reject).run();
       });
 
-      // Add voice
+      // Add voice (+ optional background music) - NO -shortest, so video
+      // is never truncated early if its actual rendered length is a hair
+      // longer than the measured voice duration (FFmpeg rounding).
       jobs.get(jobId).progress = 85;
       if (audioBase64) {
         try {
           const audioFile = tmpDir.name + '/voice.mp3';
           fs.writeFileSync(audioFile, Buffer.from(audioBase64,'base64'));
-          await new Promise((resolve,reject) => {
-            const t = setTimeout(()=>reject(new Error('audio timeout')),30000);
-            ffmpeg(mergedFile).input(audioFile)
-              .outputOptions(['-c:v','copy','-c:a','aac','-shortest','-movflags','+faststart'])
-              .output(finalFile)
-              .on('end',()=>{clearTimeout(t);resolve();})
-              .on('error',(e)=>{clearTimeout(t);reject(e);})
-              .run();
-          });
+
+          let musicFile = null;
+          if (musicUrl) {
+            try {
+              musicFile = tmpDir.name + '/music.mp3';
+              await downloadFile(musicUrl, musicFile);
+            } catch(me) { musicFile = null; }
+          }
+
+          if (musicFile) {
+            await new Promise((resolve,reject) => {
+              const t = setTimeout(()=>reject(new Error('audio timeout')),40000);
+              ffmpeg(mergedFile)
+                .input(audioFile)
+                .input(musicFile)
+                .complexFilter([
+                  '[2:a]volume=0.18,aloop=loop=-1:size=2e9[music_low]',
+                  '[1:a][music_low]amix=inputs=2:duration=first:dropout_transition=2[aout]'
+                ])
+                .outputOptions(['-map','0:v','-map','[aout]','-c:v','copy','-c:a','aac','-movflags','+faststart'])
+                .output(finalFile)
+                .on('end',()=>{clearTimeout(t);resolve();})
+                .on('error',(e)=>{clearTimeout(t);reject(e);})
+                .run();
+            });
+          } else {
+            await new Promise((resolve,reject) => {
+              const t = setTimeout(()=>reject(new Error('audio timeout')),30000);
+              ffmpeg(mergedFile).input(audioFile)
+                .outputOptions(['-c:v','copy','-c:a','aac','-movflags','+faststart'])
+                .output(finalFile)
+                .on('end',()=>{clearTimeout(t);resolve();})
+                .on('error',(e)=>{clearTimeout(t);reject(e);})
+                .run();
+            });
+          }
         } catch(ae) { fs.copyFileSync(mergedFile,finalFile); }
       } else {
         fs.copyFileSync(mergedFile,finalFile);
