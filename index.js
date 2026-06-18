@@ -308,7 +308,7 @@ app.post('/merge-overlay', async (req, res) => {
         await new Promise((resolve, reject) => {
           const t = setTimeout(() => reject(new Error("text timeout")), 15000);
           ffmpeg()
-            .input("color=black:640x360:15")
+            .input("color=black:720x1280:15")
             .inputOptions(["-f","lavfi"])
             .duration(dur)
             .videoFilters(["scale=720:1280"])
@@ -343,7 +343,7 @@ app.post('/merge-overlay', async (req, res) => {
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error("vid timeout")), 30000);
             ffmpeg(srcFile)
-              .videoFilters(["scale=640:360,fps=24"])
+              .videoFilters(["scale=720:1280,fps=24"])
               .outputOptions(["-c:v","libx264","-preset","ultrafast","-crf","30","-pix_fmt","yuv420p","-profile:v","baseline","-an","-t",String(dur)])
               .output(outFile)
               .on("end", () => { clearTimeout(t); resolve(); })
@@ -447,7 +447,7 @@ app.post('/merge-start', async (req, res) => {
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
             const ffc = ffmpeg()
-              .input('color=s=640x360:r=15').inputOptions(['-f','lavfi'])
+              .input('color=s=720x1280:r=15').inputOptions(['-f','lavfi'])
               .duration(dur);
             if (cardFilters.length) ffc.videoFilters(cardFilters);
             ffc.outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-an'])
@@ -464,7 +464,7 @@ app.post('/merge-start', async (req, res) => {
             const ff = scene.isImage
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1','-t',String(dur)])
               : ffmpeg(srcFile);
-            const clipFilters = ['scale=640:360:force_original_aspect_ratio=decrease','pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black'];
+            const clipFilters = ['scale=720:1280:force_original_aspect_ratio=decrease','pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black'];
             const clipTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,120);
             const clipText = clipTextRaw ? wrapText(clipTextRaw, 28) : '';
             if (clipText) {
