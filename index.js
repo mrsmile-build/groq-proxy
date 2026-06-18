@@ -7,7 +7,7 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const tmp = require('tmp');
 
 
-function wrapText(text, maxCharsPerLine) {
+function wrapTextArray(text, maxCharsPerLine) {
   const words = text.split(' ');
   const lines = [];
   let current = '';
@@ -20,7 +20,32 @@ function wrapText(text, maxCharsPerLine) {
     }
   }
   if (current.trim()) lines.push(current.trim());
-  return lines.slice(0, 3).join('\\n');
+  return lines.slice(0, 3);
+}
+
+// Builds one drawtext filter PER LINE (more reliable than embedded \n
+// escapes, which can break depending on how the filter string gets built).
+function buildTextLines(rawText, maxCharsPerLine, fontsize, boxcolor, boxborderw, anchor, canvasH) {
+  const lines = wrapTextArray(rawText, maxCharsPerLine);
+  if (!lines.length) return [];
+  const lineHeight = Math.round(fontsize * 1.35);
+  const blockHeight = lines.length * lineHeight;
+  const startY = anchor === 'center'
+    ? Math.round((canvasH - blockHeight) / 2)
+    : (canvasH - 60 - blockHeight); // 'bottom' anchor, 60px margin
+  return lines.map((line, i) => ({
+    filter: 'drawtext',
+    options: {
+      text: line,
+      fontsize: fontsize,
+      fontcolor: 'white',
+      x: '(w-text_w)/2',
+      y: String(startY + i * lineHeight),
+      box: 1,
+      boxcolor: boxcolor,
+      boxborderw: boxborderw
+    }
+  }));
 }
 
 const app = express();
@@ -439,11 +464,7 @@ app.post('/merge-start', async (req, res) => {
         if (!scene.videoUrl || scene.isTextCard) {
           // Text card - solid black video with text
           const cardTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,150);
-          const cardText = cardTextRaw ? wrapText(cardTextRaw, 22) : '';
-          const cardFilters = [];
-          if (cardText) {
-            cardFilters.push({filter:'drawtext',options:{text:cardText,fontsize:42,fontcolor:'white',x:'(w-text_w)/2',y:'(h-text_h)/2',box:1,boxcolor:'black@0.45',boxborderw:18,line_spacing:12}});
-          }
+          const cardFilters = cardTextRaw ? buildTextLines(cardTextRaw, 22, 42, 'black@0.45', 18, 'center', 1280) : [];
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
             const ffc = ffmpeg()
@@ -466,9 +487,8 @@ app.post('/merge-start', async (req, res) => {
               : ffmpeg(srcFile);
             const clipFilters = ['scale=720:1280:force_original_aspect_ratio=decrease','pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black'];
             const clipTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,120);
-            const clipText = clipTextRaw ? wrapText(clipTextRaw, 22) : '';
-            if (clipText) {
-              clipFilters.push({filter:'drawtext',options:{text:clipText,fontsize:34,fontcolor:'white',x:'(w-text_w)/2',y:'h-th-60',box:1,boxcolor:'black@0.55',boxborderw:16,line_spacing:10}});
+            if (clipTextRaw) {
+              clipFilters.push(...buildTextLines(clipTextRaw, 22, 34, 'black@0.55', 16, 'bottom', 1280));
             }
             ff.videoFilters(clipFilters)
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
