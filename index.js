@@ -132,7 +132,7 @@ app.post('/tts-voicerss', async (req, res) => {
     'en-gb-m':    'en_uk_001',
     'en-gb-f':    'en_uk_003',
     'en-au-m':    'en_au_002',
-    'en-au-f':    'en_au_002',
+    'en-au-f':    'en_au_001',
     'en-news-m':  'en_us_007',
     'en-story-f': 'en_us_002',
     'fr-m':       'fr_003',
