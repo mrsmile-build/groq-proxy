@@ -20,7 +20,7 @@ function wrapText(text, maxCharsPerLine) {
     }
   }
   if (current.trim()) lines.push(current.trim());
-  return lines.slice(0, 3).join('\n');
+  return lines.slice(0, 3).join('\\n');
 }
 
 const app = express();
