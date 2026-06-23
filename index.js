@@ -547,10 +547,22 @@ app.post('/merge-start', async (req, res) => {
 
           let musicFile = null;
           if (musicUrl) {
+            console.log('[Job '+jobId+'] attempting music download from:', musicUrl);
             try {
               musicFile = tmpDir.name + '/music.mp3';
               await downloadFile(musicUrl, musicFile);
-            } catch(me) { musicFile = null; }
+              const musicSize = fs.statSync(musicFile).size;
+              console.log('[Job '+jobId+'] music downloaded, size:', musicSize, 'bytes');
+              if (musicSize < 1000) {
+                console.warn('[Job '+jobId+'] music file too small, likely invalid - skipping');
+                musicFile = null;
+              }
+            } catch(me) {
+              console.warn('[Job '+jobId+'] music download FAILED:', me.message);
+              musicFile = null;
+            }
+          } else {
+            console.log('[Job '+jobId+'] no musicUrl provided');
           }
 
           if (musicFile) {
@@ -561,7 +573,8 @@ app.post('/merge-start', async (req, res) => {
                 .input(musicFile)
                 .complexFilter([
                   '[2:a]volume=0.18,aloop=loop=-1:size=2e9[music_low]',
-                  '[1:a][music_low]amix=inputs=2:duration=first:dropout_transition=2[aout]'
+                  '[1:a]volume=1.6[voice_boost]',
+                  '[voice_boost][music_low]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]'
                 ])
                 .outputOptions(['-map','0:v','-map','[aout]','-c:v','copy','-c:a','aac','-movflags','+faststart'])
                 .output(finalFile)
