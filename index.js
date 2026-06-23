@@ -48,6 +48,22 @@ function buildTextLines(rawText, maxCharsPerLine, fontsize, boxcolor, boxborderw
   }));
 }
 
+function watermarkFilter() {
+  return {
+    filter: 'drawtext',
+    options: {
+      text: 'VideoKit',
+      fontsize: 20,
+      fontcolor: 'white@0.75',
+      x: 'w-text_w-16',
+      y: '16',
+      box: 1,
+      boxcolor: 'black@0.3',
+      boxborderw: 6
+    }
+  };
+}
+
 const app = express();
 
 const rateLimit = new Map();
@@ -465,6 +481,7 @@ app.post('/merge-start', async (req, res) => {
           // Text card - solid black video with text
           const cardTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,150);
           const cardFilters = cardTextRaw ? buildTextLines(cardTextRaw, 22, 42, 'black@0.45', 18, 'center', 1280) : [];
+          cardFilters.push(watermarkFilter());
           await new Promise((resolve, reject) => {
             const t = setTimeout(() => reject(new Error('text timeout')), 30000);
             const ffc = ffmpeg()
@@ -486,6 +503,7 @@ app.post('/merge-start', async (req, res) => {
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1','-t',String(dur)])
               : ffmpeg(srcFile);
             const clipFilters = ['scale=720:1280:force_original_aspect_ratio=decrease','pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black'];
+            clipFilters.push(watermarkFilter());
             const clipTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,120);
             if (clipTextRaw) {
               clipFilters.push(...buildTextLines(clipTextRaw, 22, 34, 'black@0.55', 16, 'bottom', 1280));
