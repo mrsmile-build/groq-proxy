@@ -503,10 +503,25 @@ app.post('/merge-start', async (req, res) => {
               ? ffmpeg().input(srcFile).inputOptions(['-loop','1','-t',String(dur)])
               : ffmpeg(srcFile);
             const clipFilters = ['scale=720:1280:force_original_aspect_ratio=decrease','pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black'];
+            // Darken the background a touch behind hook frames so bold text pops
+            if (scene.isHookFrame && scene.hookText) {
+              clipFilters.push({filter:'drawbox',options:{x:0,y:0,w:'iw',h:'ih',color:'black@0.35',t:'fill'}});
+            }
             clipFilters.push(watermarkFilter());
-            const clipTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,120);
-            if (clipTextRaw) {
-              clipFilters.push(...buildTextLines(clipTextRaw, 22, 34, 'black@0.55', 16, 'bottom', 1280));
+            if (scene.isHookFrame && scene.hookText) {
+              const hookTextRaw = scene.hookText.toUpperCase().replace(/['":\\]/g,' ').slice(0,80);
+              clipFilters.push(...buildTextLines(hookTextRaw, 16, 64, 'black@0.0', 0, 'center', 1280).map(f => Object.assign({}, f, {
+                options: Object.assign({}, f.options, {
+                  fontcolor: 'yellow',
+                  borderw: 6,
+                  bordercolor: 'black'
+                })
+              })));
+            } else {
+              const clipTextRaw = (scene.text||'').replace(/['":\\]/g,' ').slice(0,120);
+              if (clipTextRaw) {
+                clipFilters.push(...buildTextLines(clipTextRaw, 22, 34, 'black@0.55', 16, 'bottom', 1280));
+              }
             }
             ff.videoFilters(clipFilters)
               .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','35','-pix_fmt','yuv420p','-profile:v','baseline','-level','3.0','-an','-r','15','-t',String(dur)])
