@@ -202,19 +202,38 @@ app.post('/tts-voicerss', async (req, res) => {
 
   try {
     const audioBufs = [];
+    let chunkIdx = 0;
     for (const chunk of chunks) {
-      const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: chunk, voice: tikVoice })
-      });
-      const data = await r.json();
-      if (data.success && data.data) {
-        audioBufs.push(Buffer.from(data.data, 'base64'));
+      chunkIdx++;
+      let success = false;
+      for (let attempt = 0; attempt < 2 && !success; attempt++) {
+        try {
+          const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: chunk, voice: tikVoice })
+          });
+          const data = await r.json();
+          if (data.success && data.data) {
+            audioBufs.push(Buffer.from(data.data, 'base64'));
+            success = true;
+            console.log('[TTS] chunk '+chunkIdx+'/'+chunks.length+' OK');
+          } else {
+            console.warn('[TTS] chunk '+chunkIdx+'/'+chunks.length+' returned no audio, attempt '+(attempt+1));
+            await new Promise(r => setTimeout(r, 500));
+          }
+        } catch(ce) {
+          console.warn('[TTS] chunk '+chunkIdx+'/'+chunks.length+' threw error:', ce.message);
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      if (!success) {
+        console.error('[TTS] chunk '+chunkIdx+'/'+chunks.length+' PERMANENTLY FAILED after retries - audio will be shorter than expected');
       }
       // Small delay between chunks
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 250));
     }
+    console.log('[TTS] final result:', audioBufs.length, 'of', chunks.length, 'chunks succeeded');
     if (audioBufs.length > 0) {
       const combined = Buffer.concat(audioBufs);
       res.set('Content-Type', 'audio/mpeg');
