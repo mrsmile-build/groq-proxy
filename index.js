@@ -20,7 +20,7 @@ function wrapTextArray(text, maxCharsPerLine) {
     }
   }
   if (current.trim()) lines.push(current.trim());
-  return lines.slice(0, 3);
+  return lines.slice(0, 6);
 }
 
 // Builds one drawtext filter PER LINE (more reliable than embedded \n
