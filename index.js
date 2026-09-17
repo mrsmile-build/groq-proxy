@@ -109,6 +109,30 @@ app.post('/generate', async (req, res) => {
   res.status(500).json(lastError);
 });
 
+// ── Business Research (server-side fetch, no CORS) ──────────
+app.post('/research', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) return res.json({ context: '' });
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36' },
+      redirect: 'follow'
+    });
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('html') && !ct.includes('text')) return res.json({ context: 'Non-HTML response from ' + url });
+    let html = await r.text();
+    const grab = (re) => { const m = html.match(re); return m && m[1] ? m[1].trim() : ''; };
+    const title = grab(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i);
+    const desc = grab(/<meta[^>]+name=["']description["'][^>]+content=["']([\s\S]{0,400}?)["']/i) ||
+                 grab(/<meta[^>]+property=["']og:description["'][^>]+content=["']([\s\S]{0,400}?)["']/i);
+    const ogTitle = grab(/<meta[^>]+property=["']og:title["'][^>]+content=["']([\s\S]{0,200}?)["']/i);
+    const body = html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+    res.json({ context: ('URL: ' + url + ' | Title: ' + (ogTitle || title) + ' | Description: ' + desc + ' | Page text: ' + body.slice(0, 2500)) });
+  } catch(e) {
+    res.json({ context: '', error: 'Could not fetch URL: ' + e.message });
+  }
+});
+
 // ── Smart Video Search ────────────────────────────────────────
 // q = comma-separated keywords, duration = total video seconds
 // Clip options per scene:
