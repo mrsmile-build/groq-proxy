@@ -263,7 +263,8 @@ async function edgeTTS(text, voice) {
   
   function getHeadersAndURL() {
     const connId = crypto.randomUUID().replace(/-/g, '');
-    const secMsGec = crypto.createHash('sha256').update(TRUSTED_CLIENT_TOKEN + connId).digest('hex').toUpperCase();
+    const ticks = Math.floor(Math.floor(Date.now() / 1000) / 300) * 300 * 10000000;
+    const secMsGec = crypto.createHash('sha256').update(String(ticks) + TRUSTED_CLIENT_TOKEN).digest('hex').toUpperCase();
     const secMsGecVersion = '1-130.0.2849.68';
     return {
       url: WSS_URL + '?TrustedClientToken=' + TRUSTED_CLIENT_TOKEN + '&Sec-MS-GEC=' + secMsGec + '&Sec-MS-GEC-Version=' + secMsGecVersion + '&ConnectionId=' + connId,

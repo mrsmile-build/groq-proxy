@@ -7,11 +7,12 @@
     "build": "npm install && pip install edge-tts --break-system-packages || true"
   },
   "dependencies": {
-    "express": "*",
-    "cors": "*",
-    "fluent-ffmpeg": "*",
     "@ffmpeg-installer/ffmpeg": "*",
+    "cors": "*",
+    "express": "*",
+    "fluent-ffmpeg": "*",
     "node-fetch": "*",
-    "tmp": "*"
+    "tmp": "*",
+    "ws": "^8.21.3"
   }
 }
