@@ -188,19 +188,20 @@ app.post('/tts-voicerss', async (req, res) => {
   if (!text || !text.trim()) return res.status(400).json({ error: 'No text' });
   const safeText = cleanText.slice(0, 3000);
 
-  const seVoiceMap = {
-    'en-us-m': 'Joey', 'en-us-f': 'Ivy',
-    'en-gb-m': 'Brian', 'en-gb-f': 'Amy',
-    'en-au-m': 'Russell', 'en-au-f': 'Nicole',
-    'en-news-m': 'Matthew', 'en-story-f': 'Joanna'
+  // Microsoft Edge TTS voice map (key-free, neural voices)
+  const edgeVoiceMap = {
+    'en-us-m': 'en-US-GuyNeural', 'en-us-f': 'en-US-JennyNeural',
+    'en-gb-m': 'en-GB-RyanNeural', 'en-gb-f': 'en-GB-SoniaNeural',
+    'en-au-m': 'en-AU-WilliamNeural', 'en-au-f': 'en-AU-NatashaNeural',
+    'en-news-m': 'en-US-GuyNeural', 'en-story-f': 'en-US-AriaNeural'
   };
-  const seVoice = seVoiceMap[voice] || 'Joey';
+  const edgeVoice = edgeVoiceMap[voice] || 'en-US-GuyNeural';
 
   const words = safeText.split(' ');
   const chunks = [];
   let cur = '';
   for (const word of words) {
-    if ((cur + ' ' + word).trim().length > 900) {
+    if ((cur + ' ' + word).trim().length > 800) {
       if (cur.trim()) chunks.push(cur.trim());
       cur = word;
     } else {
@@ -209,32 +210,36 @@ app.post('/tts-voicerss', async (req, res) => {
   }
   if (cur.trim()) chunks.push(cur.trim());
 
-  console.log('[TTS] StreamElements chunks:', chunks.length);
+  console.log('[TTS] Edge TTS chunks:', chunks.length);
 
   try {
     const audioBufs = [];
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       let success = false;
-      try {
-        const url = 'https://api.streamelements.com/kappa/v2/speech?voice=' + seVoice + '&text=' + encodeURIComponent(chunk);
-        const r = await fetch(url);
-        if (r.ok) {
-          const buf = Buffer.from(await r.arrayBuffer());
-          if (buf.length > 100) { audioBufs.push(buf); success = true; console.log('[TTS] chunk ' + (i+1) + ' OK via StreamElements'); }
-        }
-      } catch(e) { console.warn('[TTS] SE failed chunk', i+1, e.message); }
 
+      // 1. Try Microsoft Edge TTS (primary)
+      try {
+        const edgeBuf = await edgeTTS(chunk, edgeVoice);
+        if (edgeBuf && edgeBuf.length > 100) {
+          audioBufs.push(edgeBuf);
+          success = true;
+          console.log('[TTS] chunk ' + (i+1) + ' OK via Edge TTS');
+        }
+      } catch(e) { console.warn('[TTS] Edge failed chunk', i+1, e.message); }
+
+      // 2. Fallback to weilnet TikTok proxy with redirect-following
       if (!success) {
         try {
           const tkVoice = { 'en-us-m':'en_us_006', 'en-us-f':'en_us_001', 'en-gb-m':'en_uk_001', 'en-gb-f':'en_uk_003' }[voice] || 'en_us_006';
           const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: chunk, voice: tkVoice })
+            body: JSON.stringify({ text: chunk, voice: tkVoice }),
+            redirect: 'follow'
           });
           const data = await r.json();
-          if (data.success && data.data) { audioBufs.push(Buffer.from(data.data, 'base64')); success = true; console.log('[TTS] chunk ' + (i+1) + ' OK via TikTok fallback'); }
-        } catch(e) { console.warn('[TTS] TK fallback failed chunk', i+1); }
+          if (data.success && data.data) { audioBufs.push(Buffer.from(data.data, 'base64')); success = true; console.log('[TTS] chunk ' + (i+1) + ' OK via weilnet fallback'); }
+        } catch(e) { console.warn('[TTS] weilnet fallback failed chunk', i+1, e.message); }
       }
       if (!success) console.error('[TTS] chunk ' + (i+1) + ' PERMANENTLY FAILED');
     }
@@ -247,6 +252,62 @@ app.post('/tts-voicerss', async (req, res) => {
     res.status(500).json({ error: 'TTS crashed: ' + err.message });
   }
 });
+
+// Microsoft Edge TTS implementation (key-free neural voices via signed WebSocket)
+async function edgeTTS(text, voice) {
+  const WebSocket = require('ws');
+  const crypto = require('crypto');
+  
+  const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+  const WSS_URL = 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
+  
+  function getHeadersAndURL() {
+    const connId = crypto.randomUUID().replace(/-/g, '');
+    const secMsGec = crypto.createHash('sha256').update(TRUSTED_CLIENT_TOKEN + connId).digest('hex').toUpperCase();
+    const secMsGecVersion = '1-130.0.2849.68';
+    return {
+      url: WSS_URL + '?TrustedClientToken=' + TRUSTED_CLIENT_TOKEN + '&Sec-MS-GEC=' + secMsGec + '&Sec-MS-GEC-Version=' + secMsGecVersion + '&ConnectionId=' + connId,
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache',
+        'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
+      }
+    };
+  }
+
+  return new Promise((resolve, reject) => {
+    const { url, headers } = getHeadersAndURL();
+    const ws = new WebSocket(url, { headers });
+    const audioChunks = [];
+    let requestId = crypto.randomUUID().replace(/-/g, '');
+    
+    ws.on('open', () => {
+      ws.send(`Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`);
+      ws.send(`X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n<speak version='1.0' xml:lang='en-US'><voice name='${voice}'><prosody rate='0%'>${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</prosody></voice></speak>`);
+    });
+    
+    ws.on('message', (data) => {
+      const msg = data.toString();
+      if (msg.includes('Path:audio')) {
+        const headerEnd = data.indexOf('\r\n\r\n');
+        if (headerEnd !== -1) audioChunks.push(data.slice(headerEnd + 4));
+      }
+      if (msg.includes('Path:turn.end')) {
+        ws.close();
+        resolve(Buffer.concat(audioChunks));
+      }
+    });
+    
+    ws.on('error', reject);
+    ws.on('close', () => { if (audioChunks.length === 0) reject(new Error('No audio received')); });
+    
+    setTimeout(() => { ws.close(); reject(new Error('Edge TTS timeout')); }, 15000);
+  });
+}
+
 
 // ── File download helper ──────────────────────────────────────
 function downloadFile(url, dest) {
