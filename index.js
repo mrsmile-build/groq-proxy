@@ -184,36 +184,23 @@ app.get('/videos', async (req, res) => {
 
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
-  // Remove ellipsis that gets spoken literally
   const cleanText = (text||'').replace(/\.\.\.+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!text || !text.trim()) return res.status(400).json({ error: 'No text' });
+  const safeText = cleanText.slice(0, 3000);
 
-  const safeText = cleanText.slice(0, 6000);
-
-  // TikTok TTS - free, no key, real male/female voices
-  const voiceMap = {
-    'en-us-m':    'en_us_006',
-    'en-us-f':    'en_us_001',
-    'en-gb-m':    'en_uk_001',
-    'en-gb-f':    'en_uk_003',
-    'en-au-m':    'en_au_002',
-    'en-au-f':    'en_au_001',
-    'en-news-m':  'en_us_007',
-    'en-story-f': 'en_us_002',
-    'fr-m':       'fr_003',
-    'de-m':       'de_002',
-    'es-m':       'es_002',
-    'pt-m':       'pt_002'
+  const seVoiceMap = {
+    'en-us-m': 'Joey', 'en-us-f': 'Ivy',
+    'en-gb-m': 'Brian', 'en-gb-f': 'Amy',
+    'en-au-m': 'Russell', 'en-au-f': 'Nicole',
+    'en-news-m': 'Matthew', 'en-story-f': 'Joanna'
   };
+  const seVoice = seVoiceMap[voice] || 'Joey';
 
-  const tikVoice = voiceMap[voice] || 'en_us_006';
-
-  // Split into chunks of 200 chars (TikTok TTS limit per request)
-  const words  = safeText.split(' ');
+  const words = safeText.split(' ');
   const chunks = [];
   let cur = '';
   for (const word of words) {
-    if ((cur + ' ' + word).trim().length > 200) {
+    if ((cur + ' ' + word).trim().length > 900) {
       if (cur.trim()) chunks.push(cur.trim());
       cur = word;
     } else {
@@ -222,56 +209,43 @@ app.post('/tts-voicerss', async (req, res) => {
   }
   if (cur.trim()) chunks.push(cur.trim());
 
-  console.log('[TTS] chunks:', chunks.length, 'for', safeText.length, 'chars');
+  console.log('[TTS] StreamElements chunks:', chunks.length);
 
   try {
     const audioBufs = [];
-    let chunkIdx = 0;
-    for (const chunk of chunks) {
-      chunkIdx++;
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
       let success = false;
-      for (let attempt = 0; attempt < 2 && !success; attempt++) {
+      try {
+        const url = 'https://api.streamelements.com/kappa/v2/speech?voice=' + seVoice + '&text=' + encodeURIComponent(chunk);
+        const r = await fetch(url);
+        if (r.ok) {
+          const buf = Buffer.from(await r.arrayBuffer());
+          if (buf.length > 100) { audioBufs.push(buf); success = true; console.log('[TTS] chunk ' + (i+1) + ' OK via StreamElements'); }
+        }
+      } catch(e) { console.warn('[TTS] SE failed chunk', i+1, e.message); }
+
+      if (!success) {
         try {
+          const tkVoice = { 'en-us-m':'en_us_006', 'en-us-f':'en_us_001', 'en-gb-m':'en_uk_001', 'en-gb-f':'en_uk_003' }[voice] || 'en_us_006';
           const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: chunk, voice: tikVoice })
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: chunk, voice: tkVoice })
           });
           const data = await r.json();
-          if (data.success && data.data) {
-            audioBufs.push(Buffer.from(data.data, 'base64'));
-            success = true;
-            console.log('[TTS] chunk '+chunkIdx+'/'+chunks.length+' OK');
-          } else {
-            console.warn('[TTS] chunk '+chunkIdx+'/'+chunks.length+' returned no audio, attempt '+(attempt+1));
-            await new Promise(r => setTimeout(r, 500));
-          }
-        } catch(ce) {
-          console.warn('[TTS] chunk '+chunkIdx+'/'+chunks.length+' threw error:', ce.message);
-          await new Promise(r => setTimeout(r, 500));
-        }
+          if (data.success && data.data) { audioBufs.push(Buffer.from(data.data, 'base64')); success = true; console.log('[TTS] chunk ' + (i+1) + ' OK via TikTok fallback'); }
+        } catch(e) { console.warn('[TTS] TK fallback failed chunk', i+1); }
       }
-      if (!success) {
-        console.error('[TTS] chunk '+chunkIdx+'/'+chunks.length+' PERMANENTLY FAILED after retries - audio will be shorter than expected');
-      }
-      // Small delay between chunks
-      await new Promise(r => setTimeout(r, 250));
+      if (!success) console.error('[TTS] chunk ' + (i+1) + ' PERMANENTLY FAILED');
     }
-    console.log('[TTS] final result:', audioBufs.length, 'of', chunks.length, 'chunks succeeded');
-    if (audioBufs.length > 0) {
-      const combined = Buffer.concat(audioBufs);
-      res.set('Content-Type', 'audio/mpeg');
-      res.set('X-TTS-Source', 'tiktok-chunked');
-      return res.send(combined);
-    }
-  } catch(e) { console.warn('[TTS] TikTok failed:', e.message); }
 
-  // Fallback: Web Speech signal
-  res.status(503).json({
-    error: 'server_tts_unavailable', fallback: 'webspeech',
-    text: safeText, lang: 'en-US',
-    male: !['en-us-f','en-gb-f','en-au-f','en-story-f'].includes(voice)
-  });
+    if (audioBufs.length === 0) return res.status(500).json({ error: 'All TTS providers failed' });
+    res.set('Content-Type', 'audio/mpeg');
+    res.send(Buffer.concat(audioBufs));
+  } catch (err) {
+    console.error('[TTS] fatal:', err);
+    res.status(500).json({ error: 'TTS crashed: ' + err.message });
+  }
 });
 
 // ── File download helper ──────────────────────────────────────
