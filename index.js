@@ -263,7 +263,7 @@ async function edgeTTS(text, voice) {
   
   function getHeadersAndURL() {
     const connId = crypto.randomUUID().replace(/-/g, '');
-    const ticks = Math.floor(Math.floor(Date.now() / 1000) / 300) * 300 * 10000000;
+    const ticks = BigInt(Math.floor(Math.floor(Date.now() / 1000) / 300) * 300) * 10000000n;
     const secMsGec = crypto.createHash('sha256').update(String(ticks) + TRUSTED_CLIENT_TOKEN).digest('hex').toUpperCase();
     const secMsGecVersion = '1-130.0.2849.68';
     return {
@@ -302,6 +302,7 @@ async function edgeTTS(text, voice) {
       }
     });
     
+    ws.on('unexpected-response', (req, res) => { console.warn('[EdgeTTS] handshake HTTP', res.statusCode); try { ws.terminate(); } catch(e) {} reject(new Error('handshake ' + res.statusCode)); });
     ws.on('error', reject);
     ws.on('close', () => { if (audioChunks.length === 0) reject(new Error('No audio received')); });
     
