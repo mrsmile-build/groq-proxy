@@ -767,6 +767,34 @@ if (SELF_URL) {
 }
 
 
+app.post('/clone-voice', async (req, res) => {
+  const { name, dataUrl } = req.body || {};
+  const key = process.env.ELEVENLABS_KEY;
+  if (!key) return res.status(500).json({ error: 'ELEVENLABS_KEY not set' });
+  if (!dataUrl) return res.status(400).json({ error: 'No audio sample' });
+  try {
+    const b64 = String(dataUrl).split(',')[1] || String(dataUrl);
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.length < 5000) return res.status(400).json({ error: 'Sample too short - record 1-2 minutes of clear speech' });
+    const fd = new FormData();
+    fd.append('name', name || 'MyClonedVoice');
+    fd.append('description', 'Cloned via VideoKit');
+    fd.append('files', new Blob([buf], { type: 'audio/mpeg' }), 'sample.mp3');
+    const r = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+      method: 'POST',
+      headers: { 'xi-api-key': key },
+      body: fd
+    });
+    const d = await r.json();
+    if (!r.ok) return res.status(r.status).json({ error: ((d && d.detail) ? JSON.stringify(d.detail) : ('clone failed ' + r.status)).slice(0, 300) });
+    console.log('[CLONE] new voice:', d.voice_id);
+    res.json({ voice_id: d.voice_id });
+  } catch (e) {
+    console.error('[CLONE] fatal:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/voices', async (req, res) => {
   try {
     const key = process.env.ELEVENLABS_KEY;
