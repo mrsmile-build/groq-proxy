@@ -201,7 +201,7 @@ app.post('/tts-voicerss', async (req, res) => {
     'en-story-f': 'EXAVITQu4vr4xnSDxMaL'  // Sarah (reuse)
   };
   
-  const voiceId = elevenVoiceMap[voice] || 'pNInz6obpgDQGcFmaJgB';
+  const voiceId = (voice && String(voice).length > 15) ? String(voice) : (elevenVoiceMap[voice] || 'pNInz6obpgDQGcFmaJgB');
   const apiKey = process.env.ELEVENLABS_KEY;
   
   if (!apiKey) {
@@ -766,6 +766,17 @@ if (SELF_URL) {
   }, 10 * 60 * 1000);
 }
 
+
+app.get('/voices', async (req, res) => {
+  try {
+    const key = process.env.ELEVENLABS_KEY;
+    if (!key) return res.status(500).json({ error: 'ELEVENLABS_KEY not set' });
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+    if (!r.ok) return res.status(r.status).json({ error: 'voices fetch failed ' + r.status });
+    const data = await r.json();
+    res.json({ voices: (data.voices || []).map(v => ({ id: v.voice_id, name: v.name, labels: v.labels || {} })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/eleven-test', async (req, res) => {
   const key = process.env.ELEVENLABS_KEY;
