@@ -232,7 +232,21 @@ app.post('/tts-voicerss', async (req, res) => {
     
     if (!r.ok) {
       const errText = await r.text();
-      console.error('[TTS] ElevenLabs error:', r.status, errText);
+      console.error('[TTS] ElevenLabs error:', r.status, errText.slice(0, 200));
+      const own = process.env.OWN_TTS_URL;
+      if (own && (r.status === 429 || r.status === 401 || r.status === 402 || r.status === 403 || r.status >= 500)) {
+        try {
+          const o = await fetch(own, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: safeText, voice: voice || 'en-us-m' }) });
+          if (o.ok) {
+            const buf = Buffer.from(await o.arrayBuffer());
+            if (buf.length > 100) {
+              console.log('[TTS] served by OWN engine, bytes:', buf.length);
+              res.set('Content-Type', o.headers.get('content-type') || 'audio/wav');
+              return res.send(buf);
+            }
+          }
+        } catch (oe) { console.error('[TTS] own engine failed:', oe.message); }
+      }
       return res.status(r.status).json({ error: 'ElevenLabs failed: ' + r.status + ' ' + errText.slice(0, 200) });
     }
     
@@ -244,6 +258,20 @@ app.post('/tts-voicerss', async (req, res) => {
     
   } catch (err) {
     console.error('[TTS] ElevenLabs fatal error:', err);
+    const own = process.env.OWN_TTS_URL;
+    if (own) {
+      try {
+        const o = await fetch(own, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: safeText, voice: voice || 'en-us-m' }) });
+        if (o.ok) {
+          const buf = Buffer.from(await o.arrayBuffer());
+          if (buf.length > 100) {
+            console.log('[TTS] served by OWN engine (after crash), bytes:', buf.length);
+            res.set('Content-Type', o.headers.get('content-type') || 'audio/wav');
+            return res.send(buf);
+          }
+        }
+      } catch (oe) { console.error('[TTS] own engine failed:', oe.message); }
+    }
     res.status(500).json({ error: 'ElevenLabs crashed: ' + err.message });
   }
 });
