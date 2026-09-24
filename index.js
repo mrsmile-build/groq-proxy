@@ -186,70 +186,65 @@ app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
   const cleanText = (text||'').replace(/\.\.\.+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!text || !text.trim()) return res.status(400).json({ error: 'No text' });
-  const safeText = cleanText.slice(0, 3000);
-
-  // Microsoft Edge TTS voice map (key-free, neural voices)
-  const edgeVoiceMap = {
-    'en-us-m': 'en-US-GuyNeural', 'en-us-f': 'en-US-JennyNeural',
-    'en-gb-m': 'en-GB-RyanNeural', 'en-gb-f': 'en-GB-SoniaNeural',
-    'en-au-m': 'en-AU-WilliamNeural', 'en-au-f': 'en-AU-NatashaNeural',
-    'en-news-m': 'en-US-GuyNeural', 'en-story-f': 'en-US-AriaNeural'
+  
+  const safeText = cleanText.slice(0, 5000);
+  
+  // ElevenLabs voice map
+  const elevenVoiceMap = {
+    'en-us-m':    'pNInz6obpgDQGcFmaJgB', // Adam
+    'en-us-f':    'EXAVITQu4vr4xnSDxMaL', // Sarah  
+    'en-gb-m':    'ErXjobaKcbiMjVbW0cGi', // British male
+    'en-gb-f':    'MF3mGyEYCl7XYWbV9V6O', // British female
+    'en-au-m':    'pNInz6obpgDQGcFmaJgB', // Adam (reuse)
+    'en-au-f':    'EXAVITQu4vr4xnSDxMaL', // Sarah (reuse)
+    'en-news-m':  'pNInz6obpgDQGcFmaJgB', // Adam (reuse)
+    'en-story-f': 'EXAVITQu4vr4xnSDxMaL'  // Sarah (reuse)
   };
-  const edgeVoice = edgeVoiceMap[voice] || 'en-US-GuyNeural';
-
-  const words = safeText.split(' ');
-  const chunks = [];
-  let cur = '';
-  for (const word of words) {
-    if ((cur + ' ' + word).trim().length > 800) {
-      if (cur.trim()) chunks.push(cur.trim());
-      cur = word;
-    } else {
-      cur = cur ? cur + ' ' + word : word;
-    }
+  
+  const voiceId = elevenVoiceMap[voice] || 'pNInz6obpgDQGcFmaJgB';
+  const apiKey = process.env.ELEVENLABS_KEY;
+  
+  if (!apiKey) {
+    return res.status(500).json({ error: 'ELEVENLABS_KEY not set in environment' });
   }
-  if (cur.trim()) chunks.push(cur.trim());
-
-  console.log('[TTS] Edge TTS chunks:', chunks.length);
-
+  
   try {
-    const audioBufs = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      let success = false;
-
-      // 1. Try Microsoft Edge TTS (primary)
-      try {
-        const edgeBuf = await edgeTTS(chunk, edgeVoice);
-        if (edgeBuf && edgeBuf.length > 100) {
-          audioBufs.push(edgeBuf);
-          success = true;
-          console.log('[TTS] chunk ' + (i+1) + ' OK via Edge TTS');
+    console.log('[TTS] ElevenLabs request for', voiceId, 'text length:', safeText.length);
+    
+    const r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
+      method: 'POST',
+      headers: {
+        'Accept': 'audio/mpeg',
+        'Content-Type': 'application/json',
+        'xi-api-key': apiKey
+      },
+      body: JSON.stringify({
+        text: safeText,
+        model_id: 'eleven_turbo_v2_5',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0.0,
+          use_speaker_boost: true
         }
-      } catch(e) { console.warn('[TTS] Edge failed chunk', i+1, e.message); }
-
-      // 2. Fallback to weilnet TikTok proxy with redirect-following
-      if (!success) {
-        try {
-          const tkVoice = { 'en-us-m':'en_us_006', 'en-us-f':'en_us_001', 'en-gb-m':'en_uk_001', 'en-gb-f':'en_uk_003' }[voice] || 'en_us_006';
-          const r = await fetch('https://tiktok-tts.weilnet.workers.dev/api/generation', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: chunk, voice: tkVoice }),
-            redirect: 'follow'
-          });
-          const data = await r.json();
-          if (data.success && data.data) { audioBufs.push(Buffer.from(data.data, 'base64')); success = true; console.log('[TTS] chunk ' + (i+1) + ' OK via weilnet fallback'); }
-        } catch(e) { console.warn('[TTS] weilnet fallback failed chunk', i+1, e.message); }
-      }
-      if (!success) console.error('[TTS] chunk ' + (i+1) + ' PERMANENTLY FAILED');
+      })
+    });
+    
+    if (!r.ok) {
+      const errText = await r.text();
+      console.error('[TTS] ElevenLabs error:', r.status, errText);
+      return res.status(r.status).json({ error: 'ElevenLabs failed: ' + r.status + ' ' + errText.slice(0, 200) });
     }
-
-    if (audioBufs.length === 0) return res.status(500).json({ error: 'All TTS providers failed' });
+    
+    const audioBuffer = Buffer.from(await r.arrayBuffer());
+    console.log('[TTS] ElevenLabs success, bytes:', audioBuffer.length);
+    
     res.set('Content-Type', 'audio/mpeg');
-    res.send(Buffer.concat(audioBufs));
+    res.send(audioBuffer);
+    
   } catch (err) {
-    console.error('[TTS] fatal:', err);
-    res.status(500).json({ error: 'TTS crashed: ' + err.message });
+    console.error('[TTS] ElevenLabs fatal error:', err);
+    res.status(500).json({ error: 'ElevenLabs crashed: ' + err.message });
   }
 });
 
