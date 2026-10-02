@@ -751,6 +751,47 @@ app.get('/merge-status/:jobId', (req, res) => {
 
 
 
+app.post('/transcribe', async (req, res) => {
+  const { mediaBase64 } = req.body || {};
+  if (!mediaBase64) return res.status(400).json({ error: 'No media' });
+  const keys = [process.env.GROQ_KEY, process.env.GROQ_KEY2, process.env.GROQ_KEY3].filter(Boolean);
+  if (!keys.length) return res.status(500).json({ error: 'No Groq key' });
+  const tmpDir = tmp.dirSync({ unsafeCleanup: true });
+  try {
+    const inFile = tmpDir.name + '/in.mp4';
+    fs.writeFileSync(inFile, Buffer.from(String(mediaBase64).split(',')[1] || mediaBase64, 'base64'));
+    const audioFile = tmpDir.name + '/audio.mp3';
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('extract timeout')), 90000);
+      ffmpeg(inFile).noVideo().audioFrequency(16000).audioChannels(1)
+        .output(audioFile).on('end', () => { clearTimeout(t); resolve(); }).on('error', (e) => { clearTimeout(t); reject(e); }).run();
+    });
+    const buf = fs.readFileSync(audioFile);
+    if (buf.length < 1000) return res.status(400).json({ error: 'No audio track found in this file' });
+    let lastErr = null;
+    for (const key of keys) {
+      try {
+        const fd = new FormData();
+        fd.append('model', 'whisper-large-v3');
+        fd.append('response_format', 'verbose_json');
+        fd.append('file', new Blob([buf], { type: 'audio/mpeg' }), 'audio.mp3');
+        const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + key }, body: fd });
+        const d = await r.json();
+        if (r.ok && d.segments) {
+          console.log('[Transcribe] ok, segments:', d.segments.length);
+          return res.json({ segments: d.segments.map(sg => ({ start: sg.start, end: sg.end, text: (sg.text || '').trim() })).filter(sg => sg.text), duration: d.duration || 0 });
+        }
+        lastErr = new Error('groq ' + r.status + ' ' + JSON.stringify(d).slice(0, 200));
+      } catch (e) { lastErr = e; }
+    }
+    res.status(500).json({ error: 'Transcription failed: ' + (lastErr && lastErr.message) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    try { tmpDir.removeCallback(); } catch (e) {}
+  }
+});
+
 app.get('/trending', async (req, res) => {
   const { q } = req.query;
   const key = process.env.HASDATA_KEY;
