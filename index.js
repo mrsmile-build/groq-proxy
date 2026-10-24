@@ -792,6 +792,42 @@ app.post('/transcribe', async (req, res) => {
   }
 });
 
+app.post('/remux-start', (req, res) => {
+  const { webmBase64 } = req.body || {};
+  if (!webmBase64) return res.status(400).json({ error: 'No webm provided' });
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  jobs.set(jobId, { status: 'processing', progress: 30, file: null, error: null });
+  res.json({ jobId });
+  (async () => {
+    try {
+      const tmpDir = tmp.dirSync({ unsafeCleanup: true });
+      const inF  = tmpDir.name + '/in.webm';
+      const outF = tmpDir.name + '/out.mp4';
+      fs.writeFileSync(inF, Buffer.from(String(webmBase64).split(',')[1] || webmBase64, 'base64'));
+      console.log('[Remux ' + jobId + '] webm in, bytes:', fs.statSync(inF).size);
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('remux timeout')), 300000);
+        ffmpeg(inF)
+          .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','30','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart'])
+          .output(outF)
+          .on('end', () => { clearTimeout(t); resolve(); })
+          .on('error', (e) => { clearTimeout(t); reject(e); })
+          .run();
+      });
+      const buf = fs.readFileSync(outF);
+      tmpDir.removeCallback();
+      console.log('[Remux ' + jobId + '] mp4 out, bytes:', buf.length);
+      jobs.get(jobId).status = 'done';
+      jobs.get(jobId).progress = 100;
+      jobs.get(jobId).file = buf;
+      setTimeout(() => jobs.delete(jobId), 600000);
+    } catch (e) {
+      console.error('[Remux ' + jobId + '] error:', e.message);
+      if (jobs.get(jobId)) { jobs.get(jobId).status = 'error'; jobs.get(jobId).error = e.message; }
+    }
+  })();
+});
+
 app.get('/trending', async (req, res) => {
   const { q } = req.query;
   const key = process.env.HASDATA_KEY;
