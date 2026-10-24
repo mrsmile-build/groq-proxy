@@ -828,7 +828,7 @@ app.listen(process.env.PORT || 3000, () => {
 
 // Keep-alive: ping self every 10 minutes so Render never sleeps
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || '';
-if (SELF_URL) {
+if (SELF_URL && process.env.KEEP_AWAKE === 'true') {
   setInterval(() => {
     fetch(SELF_URL + '/').catch(() => {});
     console.log('[Keep-alive] pinged', new Date().toISOString());
