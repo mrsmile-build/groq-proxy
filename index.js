@@ -182,6 +182,29 @@ app.get('/videos', async (req, res) => {
   }
 });
 
+function edgeVoiceFor(v){
+  const short = {
+    'en-us-m':'en-US-GuyNeural','en-us-f':'en-US-AriaNeural',
+    'en-gb-m':'en-GB-RyanNeural','en-gb-f':'en-GB-SoniaNeural',
+    'en-au-m':'en-AU-WilliamNeural','en-au-f':'en-AU-NatashaNeural',
+    'en-news-m':'en-US-AndrewNeural','en-story-f':'en-US-JennyNeural'
+  };
+  const byId = {
+    'pNInz6obpgDQGcFmaJgB':'en-US-GuyNeural',
+    'EXAVITQu4vr4xnSDxMaL':'en-US-AriaNeural',
+    'ErXjobaKcbiMjVbW0cGi':'en-GB-RyanNeural',
+    'MF3mGyEYCl7XYWbV9V6O':'en-GB-SoniaNeural'
+  };
+  const s = String(v||'');
+  return short[s] || byId[s] || 'en-US-AriaNeural';
+}
+async function tryEdgeTTS(text, voice){
+  try {
+    const buf = await edgeTTS(text, edgeVoiceFor(voice));
+    if (buf && buf.length > 100) return buf;
+  } catch(e){ console.error('[TTS] edge failed:', e.message); }
+  return null;
+}
 app.post('/tts-voicerss', async (req, res) => {
   const { text, voice } = req.body;
   const cleanText = (text||'').replace(/\.\.\.+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -233,6 +256,10 @@ app.post('/tts-voicerss', async (req, res) => {
     if (!r.ok) {
       const errText = await r.text();
       console.error('[TTS] ElevenLabs error:', r.status, errText.slice(0, 200));
+      if (r.status === 429 || r.status === 401 || r.status === 402 || r.status === 403 || r.status >= 500) {
+        const eb = await tryEdgeTTS(safeText, voice);
+        if (eb) { console.log('[TTS] served by EDGE engine, bytes:', eb.length); res.set('Content-Type','audio/mpeg'); return res.send(eb); }
+      }
       const own = process.env.OWN_TTS_URL;
       if (own && (r.status === 429 || r.status === 401 || r.status === 402 || r.status === 403 || r.status >= 500)) {
         try {
@@ -258,6 +285,8 @@ app.post('/tts-voicerss', async (req, res) => {
     
   } catch (err) {
     console.error('[TTS] ElevenLabs fatal error:', err);
+    const eb2 = await tryEdgeTTS(safeText, voice);
+    if (eb2) { console.log('[TTS] served by EDGE engine (after crash), bytes:', eb2.length); res.set('Content-Type','audio/mpeg'); return res.send(eb2); }
     const own = process.env.OWN_TTS_URL;
     if (own) {
       try {
