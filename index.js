@@ -839,8 +839,16 @@ app.post('/remux-start', (req, res) => {
       const tmpDir = tmp.dirSync({ unsafeCleanup: true });
       const inF  = tmpDir.name + '/in.webm';
       const outF = tmpDir.name + '/out.mp4';
-      fs.writeFileSync(inF, Buffer.from(String(webmBase64).split(',')[1] || webmBase64, 'base64'));
-      console.log('[Remux ' + jobId + '] webm in, bytes:', fs.statSync(inF).size);
+      const raw = Buffer.from(String(webmBase64).split(',')[1] || webmBase64, 'base64');
+      if (raw.length < 8 || raw[0]!==0x1A || raw[1]!==0x45 || raw[2]!==0xDF || raw[3]!==0xA3) {
+        console.log('[Remux ' + jobId + '] rejected: not a valid webm (EBML magic missing)');
+        tmpDir.removeCallback();
+        jobs.get(jobId).status = 'error';
+        jobs.get(jobId).error  = 'Invalid webm upload';
+        return;
+      }
+      fs.writeFileSync(inF, raw);
+      console.log('[Remux ' + jobId + '] webm in, bytes:', raw.length);
       await new Promise((resolve, reject) => {
         const t = setTimeout(() => reject(new Error('remux timeout')), 300000);
         ffmpeg(inF)
