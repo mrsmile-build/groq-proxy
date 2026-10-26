@@ -315,7 +315,7 @@ async function edgeTTS(text, voice) {
   
   function getHeadersAndURL() {
     const connId = crypto.randomUUID().replace(/-/g, '');
-    const ticks = BigInt(Math.floor(Math.floor(Date.now() / 1000) / 300) * 300) * 10000000n;
+    const raw = BigInt(Date.now()) * 10000n + 116444736000000000n; const ticks = raw - (raw % 3000000000n);
     const secMsGec = crypto.createHash('sha256').update(String(ticks) + TRUSTED_CLIENT_TOKEN).digest('hex').toUpperCase();
     const secMsGecVersion = '1-130.0.2849.68';
     return {
