@@ -808,8 +808,8 @@ app.post('/remux-start', (req, res) => {
       await new Promise((resolve, reject) => {
         const t = setTimeout(() => reject(new Error('remux timeout')), 300000);
         ffmpeg(inF)
-          .inputOptions(['-fflags','+genpts+igndts'])
-          .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','30','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart','-vsync','cfr'])
+          
+          .outputOptions(['-c:v','libx264','-preset','ultrafast','-crf','30','-pix_fmt','yuv420p','-c:a','aac','-b:a','128k','-movflags','+faststart'])
           .output(outF)
           .on('end', () => { clearTimeout(t); resolve(); })
           .on('error', (e) => { clearTimeout(t); reject(e); })
