@@ -263,6 +263,13 @@ app.post('/tts-voicerss', async (req, res) => {
           if (r2.ok) { const b2 = Buffer.from(await r2.arrayBuffer()); if (b2.length > 100) { console.log('[TTS] served by ELEVENLABS key2, bytes:', b2.length); res.set('Content-Type','audio/mpeg'); return res.send(b2); } }
         } catch (e2) { console.error('[TTS] key2 failed:', e2.message); }
       }
+      const key3 = process.env.ELEVENLABS_KEY_3;
+      if (key3 && (r.status === 429 || r.status === 401 || r.status === 402 || r.status === 403)) {
+        try {
+          const r3 = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, { method: 'POST', headers: { 'Accept': 'audio/mpeg', 'Content-Type': 'application/json', 'xi-api-key': key3 }, body: JSON.stringify({ text: safeText, model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true } }) });
+          if (r3.ok) { const b3 = Buffer.from(await r3.arrayBuffer()); if (b3.length > 100) { console.log('[TTS] served by ELEVENLABS key3, bytes:', b3.length); res.set('Content-Type','audio/mpeg'); return res.send(b3); } }
+        } catch (e3) { console.error('[TTS] key3 failed:', e3.message); }
+      }
       if (r.status === 429 || r.status === 401 || r.status === 402 || r.status === 403 || r.status >= 500) {
         const eb = await tryEdgeTTS(safeText, voice);
         if (eb) { console.log('[TTS] served by EDGE engine, bytes:', eb.length); res.set('Content-Type','audio/mpeg'); return res.send(eb); }
